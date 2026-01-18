@@ -15,16 +15,16 @@ export async function scrapeWithCheerio(city: string, zipCode: string): Promise<
     // However, the `annonces/achat-de-bien` URL is the modern SEO friendly one. 
     // Let's keep the Modern URL but use Cheerio to parse, as the simple python script suggests.
 
-    const formattedCity = city.toLowerCase().replace(/ /g, '-').replace(/'/g, '');
-    const dept = zipCode.substring(0, 2);
-    const url = `https://www.seloger.com/annonces/achat-de-bien/${formattedCity}-${dept}/`;
+    // Optimized Legacy URL from Article
+    // projects=2 (Buy), types=1,2 (Apt/House)
+    const url = `https://www.seloger.com/list.htm?projects=2&types=1,2&places=[{cp:${zipCode}}]&enterprise=0&qsVersion=1.0`;
+
+    console.log(`[Cheerio] Fetching: ${url}`);
 
     try {
         const response = await fetch(url, {
             headers: {
-                // Headers from the article's python script
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept-Language': 'fr-FR,fr;q=0.9',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Referer': 'https://www.google.com/'
             }
@@ -37,6 +37,15 @@ export async function scrapeWithCheerio(city: string, zipCode: string): Promise<
 
         const html = await response.text();
         const $ = cheerio.load(html);
+
+        // Debug Title
+        const title = $('title').text();
+        console.log(`[Cheerio] Page Title: ${title}`);
+
+        if (title.includes("Captcha") || title.includes("robot")) {
+            console.warn("[Cheerio] CAPTCHA Detected.");
+            return [];
+        }
 
         const listings: MarketListing[] = [];
 
