@@ -27,8 +27,9 @@ export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Pr
         console.warn("[Engine] Puppeteer returned 0 items. Falling back to simulation.");
         return simulateListings(cityName, zipCode);
 
-    } catch (e) {
-        console.error(`[Engine] Critical failure for ${cityName}`, e);
+    } catch (e: any) {
+        console.error(`[Engine] Critical failure for ${cityName}:`, e.message);
+        // Fallback, but log loud
         return simulateListings(cityName, zipCode);
     }
 }

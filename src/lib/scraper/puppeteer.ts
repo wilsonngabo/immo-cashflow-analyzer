@@ -9,13 +9,14 @@ export async function scrapeWithPuppeteer(city: string, zipCode: string): Promis
     console.log(`[Puppeteer Stealth] Starting scrape for ${city} (${zipCode})...`);
 
     // Launch browser with stealth settings
+    // HEADLESS: FALSE for Debugging/Verification so user sees it working
     const browser = await puppeteer.launch({
-        headless: true, // Keep headless for server environment
+        headless: false,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-blink-features=AutomationControlled',
-            '--window-size=1920,1080'
+            '--window-size=1280,800' // Smaller window for visibility
         ]
     });
 
