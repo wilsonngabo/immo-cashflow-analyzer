@@ -1,4 +1,5 @@
 import { scrapeWithPuppeteer } from './puppeteer';
+import { scrapeWithApify } from './apify';
 
 export interface MarketListing {
     id: string;
@@ -16,7 +17,16 @@ export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Pr
     try {
         console.log(`[Engine] Requested scan for ${cityName} (${zipCode})`);
 
-        // Attempt Real Scrape with Puppeteer
+        // 1. Try Apify (The "Better Way") - Cloud Scraper
+        // Requires APIFY_API_TOKEN in .env
+        const apifyResults = await scrapeWithApify(cityName, zipCode);
+        if (apifyResults && apifyResults.length > 0) {
+            console.log(`[Engine] Successfully scraped ${apifyResults.length} items via APIFY.`);
+            return apifyResults;
+        }
+
+        // 2. Fallback to Local Puppeteer
+        console.log("[Engine] Apify not configured or returned 0. Trying Local Puppeteer...");
         const realListings = await scrapeWithPuppeteer(cityName, zipCode);
 
         if (realListings && realListings.length > 0) {
@@ -24,12 +34,11 @@ export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Pr
             return realListings;
         }
 
-        console.warn("[Engine] Puppeteer returned 0 items. Falling back to simulation.");
+        console.warn("[Engine] All real scrapers failed. Falling back to simulation.");
         return simulateListings(cityName, zipCode);
 
     } catch (e: any) {
         console.error(`[Engine] Critical failure for ${cityName}:`, e.message);
-        // Fallback, but log loud
         return simulateListings(cityName, zipCode);
     }
 }
