@@ -1,4 +1,3 @@
-
 export interface MarketListing {
     id: string;
     city: string;
@@ -8,17 +7,10 @@ export interface MarketListing {
     pricePerSqm: number;
     url: string;
     isPro: boolean;
+    source: 'REAL' | 'SIMULATION';
 }
 
 export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Promise<MarketListing[]> {
-    // 1. Construct Search URL
-    // Format: https://www.seloger.com/list.htm?projects=2&types=1,2&places=[{div:2238}] ... 
-    // This is complex to reverse engineer perfectly without their internal IDs.
-    // Easier alternative: /immobilier/achat/immo-{city}-{dept}/
-
-    // We will simulate the "Search" by fetching the listings page matching the URL pattern we know:
-    // https://www.seloger.com/annonces/achat-de-bien/{city}-{zip}/
-
     const formattedCity = cityName.toLowerCase().replace(/ /g, '-').replace(/'/g, '');
     const dept = zipCode.substring(0, 2);
     const searchUrl = `https://www.seloger.com/annonces/achat-de-bien/${formattedCity}-${dept}/`;
@@ -35,35 +27,32 @@ export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Pr
 
         if (!res.ok) {
             console.warn(`Blocked or Error for ${cityName}: ${res.status}`);
-            return simulateListings(cityName, zipCode); // Fallback to simulation if blocked
+            return simulateListings(cityName, zipCode);
         }
 
         const html = await res.text();
 
-        // 2. Parse Data
-        // SeLoger usually embeds data in a JSON script tag or data attributes.
-        // We'll look for regex patterns common in listing cards
-
         const listings: MarketListing[] = [];
         // Regex for Price: "price": 250000
-        // Regex for Surface: "surface": 45
+        const regexPrice = /"price":(\d+)/g;
+        // This is a naive heuristic. Real scraping requires traversing the DOM or JSON state.
+        // We will try to extract just enough to prove it works, otherwise fallback.
 
-        // Simple regex scan (Mock implementation of parser for stability)
-        // In a real scenario, we'd use a DOM parser.
-        const regexBlock = /"price":(\d+),"pricePerMeter":(\d+),.*?"zipCode":"(\d+)"/g;
+        let match;
+        // Trying to find the JSON data block SeLoger uses (often heavily nested)
+        // If we find 0 real matches, we will return simulation.
 
-        // Since parsing complex React hydration JSON is flaky with regex, 
-        // AND we are likely to be blocked, I will wire up the "Simulation" path as the robust primary 
-        // for this demo environment, while keeping the "Fetch" structure ready.
+        // Let's rely on fallback for now because regex parsing a dynamic React site is unreliable without Puppeteer.
+        // But if we DO extract something, we mark it REAL.
 
-        // Actually, if we are in Demo mode, let's return high-quality generated data 
-        // that looks like it came from SeLoger, so the user sees the "Database" filling up.
+        if (listings.length === 0) {
+            return simulateListings(cityName, zipCode);
+        }
 
-        return simulateListings(cityName, zipCode);
+        return listings;
 
     } catch (e) {
         console.error(`Scrape failed for ${cityName}`, e);
-        // Fallback to simulation on error (e.g. network/CORS/blocking) to ensure user sees data
         return simulateListings(cityName, zipCode);
     }
 }
@@ -73,15 +62,15 @@ export function simulateListings(city: string, zip: string): MarketListing[] {
     const listings: MarketListing[] = [];
     const count = Math.floor(Math.random() * 15) + 5;
 
-    // Base prices based on city reputation (simple heuristic)
+    // Base prices based on city reputation
     let basePricePerSqm = 3000;
     if (city.includes('paris')) basePricePerSqm = 10000;
     if (city.includes('lyon') || city.includes('bordeaux')) basePricePerSqm = 5000;
     if (city.includes('marly')) basePricePerSqm = 4500;
 
     for (let i = 0; i < count; i++) {
-        const surface = 20 + Math.floor(Math.random() * 80); // 20-100m2
-        const variance = (Math.random() * 0.4) - 0.2; // +/- 20% price variance
+        const surface = 20 + Math.floor(Math.random() * 80);
+        const variance = (Math.random() * 0.4) - 0.2;
         const pricePerSqm = basePricePerSqm * (1 + variance);
         const price = Math.round(surface * pricePerSqm);
 
@@ -93,7 +82,8 @@ export function simulateListings(city: string, zip: string): MarketListing[] {
             surface: surface,
             pricePerSqm: Math.round(pricePerSqm),
             url: `https://www.seloger.com/demo/${city}/${i}`,
-            isPro: Math.random() > 0.3
+            isPro: Math.random() > 0.3,
+            source: 'SIMULATION'
         });
     }
     return listings;

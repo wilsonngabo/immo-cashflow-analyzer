@@ -130,6 +130,7 @@ export default function MarketExplorer() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            <TableHead>Source</TableHead>
                                             <TableHead>Prix</TableHead>
                                             <TableHead>Surface</TableHead>
                                             <TableHead>€/m²</TableHead>
@@ -139,13 +140,18 @@ export default function MarketExplorer() {
                                     <TableBody>
                                         {listings.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-center py-10 text-slate-500">
+                                                <TableCell colSpan={5} className="text-center py-10 text-slate-500">
                                                     Aucune donnée. Lancez un scan.
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
                                             listings.map((item) => (
                                                 <TableRow key={item.id}>
+                                                    <TableCell>
+                                                        <div className={`text-[10px] px-2 py-1 rounded-full font-bold w-fit ${item.source === 'REAL' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                            {item.source === 'REAL' ? 'SELOGER' : 'SIMULATION'}
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell>{(item.price / 1000).toFixed(0)}k €</TableCell>
                                                     <TableCell>{item.surface} m²</TableCell>
                                                     <TableCell className="font-medium">{item.pricePerSqm} €</TableCell>
