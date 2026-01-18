@@ -18,36 +18,42 @@ import {
 import { LocationSearch } from '@/components/location/LocationSearch';
 
 export default function MarketExplorer() {
-    const [selectedCity, setSelectedCity] = useState<any>(null);
+    const [selectedCities, setSelectedCities] = useState<any[]>([]);
     const [listings, setListings] = useState<MarketListing[]>([]);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState({ avgPriceSqM: 0, count: 0 });
 
     const handleScan = async () => {
-        if (!selectedCity) return;
+        if (selectedCities.length === 0) return;
         setLoading(true);
+        setListings([]); // Clear previous
+
         try {
-            // Call API implementation
-            const res = await fetch('/api/market/scan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    city: selectedCity.nom,
-                    zip: selectedCity.codesPostaux[0]
-                })
-            });
+            let allResults: MarketListing[] = [];
 
-            if (res.ok) {
-                const results = await res.json();
-                setListings(results);
+            // Execute scans in parallel
+            const promises = selectedCities.map(target =>
+                fetch('/api/market/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        city: target.nom,
+                        zip: target.codesPostaux[0]
+                    })
+                }).then(res => res.ok ? res.json() : [])
+            );
 
-                if (results.length > 0) {
-                    const totalSqM = results.reduce((acc: any, curr: any) => acc + curr.pricePerSqm, 0);
-                    setStats({
-                        avgPriceSqM: Math.round(totalSqM / results.length),
-                        count: results.length
-                    });
-                }
+            const resultsArrays = await Promise.all(promises);
+            allResults = resultsArrays.flat();
+
+            setListings(allResults);
+
+            if (allResults.length > 0) {
+                const totalSqM = allResults.reduce((acc: any, curr: any) => acc + curr.pricePerSqm, 0);
+                setStats({
+                    avgPriceSqM: Math.round(totalSqM / allResults.length),
+                    count: allResults.length
+                });
             }
         } catch (e) {
             console.error("Scan failed", e);
@@ -97,15 +103,14 @@ export default function MarketExplorer() {
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Ville cible</label>
-                                <LocationSearch onSelect={setSelectedCity} />
-                                {selectedCity && (
-                                    <p className="text-xs text-green-600 font-medium">
-                                        Cible: {selectedCity.nom} ({selectedCity.codesPostaux[0]})
-                                    </p>
-                                )}
+                                <LocationSearch
+                                    onSelect={(cities) => setSelectedCities(Array.isArray(cities) ? cities : [cities])}
+                                    selectedCities={selectedCities}
+                                    multi={true}
+                                />
                             </div>
 
-                            <Button className="w-full gap-2" onClick={handleScan} disabled={loading || !selectedCity}>
+                            <Button className="w-full gap-2" onClick={handleScan} disabled={loading || selectedCities.length === 0}>
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                                 Lancer le Scraper
                             </Button>
