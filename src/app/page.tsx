@@ -201,7 +201,10 @@ export default function Home() {
                     <CardDescription>Recherchez la commune pour récupérer les indicateurs de marché.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <LocationSearch onSelect={(city) => setSelectedCity(city)} />
+                    <LocationSearch
+                      onSelect={(city) => setSelectedCity(city)}
+                      selectedCity={selectedCity}
+                    />
                     {selectedCity && (
                       <div className="mt-4 space-y-4">
                         <div className="p-4 bg-blue-50 text-blue-700 rounded-md border border-blue-100 text-sm">

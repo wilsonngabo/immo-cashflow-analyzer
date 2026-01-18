@@ -26,42 +26,26 @@ type City = {
 
 interface LocationSearchProps {
     onSelect: (city: City) => void;
+    selectedCity?: City | null; // New prop
 }
 
-export function LocationSearch({ onSelect }: LocationSearchProps) {
+export function LocationSearch({ onSelect, selectedCity }: LocationSearchProps) {
     const [open, setOpen] = React.useState(false);
     const [value, setValue] = React.useState('');
     const [query, setQuery] = React.useState('');
     const [results, setResults] = React.useState<City[]>([]);
     const [loading, setLoading] = React.useState(false);
 
+    // Sync from parent
     React.useEffect(() => {
-        if (!query || query.length < 3) {
-            setResults([]);
-            return;
+        if (selectedCity) {
+            setValue(selectedCity.code);
+            // We might want to pre-fill available results if we want to allow re-selection, 
+            // but primarily we just want the display to be correct.
         }
+    }, [selectedCity]);
 
-        const fetchCities = async () => {
-            setLoading(true);
-            try {
-                const isZip = /^\d+$/.test(query);
-                const url = isZip
-                    ? `https://geo.api.gouv.fr/communes?codePostal=${query}&fields=nom,code,codesPostaux&format=json&geometry=centre`
-                    : `https://geo.api.gouv.fr/communes?nom=${query}&fields=nom,code,codesPostaux&boost=population&limit=10`;
-
-                const response = await fetch(url);
-                const data = await response.json();
-                setResults(data);
-            } catch (error) {
-                console.error('Failed to fetch cities:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        const timeoutId = setTimeout(fetchCities, 300);
-        return () => clearTimeout(timeoutId);
-    }, [query]);
+    // ... search effect ...
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -72,11 +56,14 @@ export function LocationSearch({ onSelect }: LocationSearchProps) {
                     aria-expanded={open}
                     className="w-full justify-between"
                 >
-                    {value
-                        ? results.find((city) => city.code === value)?.nom || value
-                        : "Rechercher une ville..."}
+                    {selectedCity
+                        ? `${selectedCity.nom} (${selectedCity.codesPostaux[0]})`
+                        : (value
+                            ? results.find((city) => city.code === value)?.nom || value
+                            : "Rechercher une ville...")}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
+
             </PopoverTrigger>
             <PopoverContent className="w-[400px] p-0" align="start">
                 <Command shouldFilter={false}>
