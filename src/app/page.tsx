@@ -3,20 +3,21 @@
 import { useState, useEffect } from 'react';
 import { LocationSearch } from '@/components/location/LocationSearch';
 import { CalculatorForm } from '@/components/calculator/CalculatorForm';
-import { FiscalModeSelector } from '@/components/calculator/FiscalModeSelector'; // NEW
+import { FiscalModeSelector } from '@/components/calculator/FiscalModeSelector';
 import { FinancialResultsDisplay } from '@/components/calculator/FinancialResultsDisplay';
-import { UrlImporter } from '@/components/importer/UrlImporter'; // NEW
-import { ComparisonDashboard, SavedSimulation } from '@/components/calculator/ComparisonDashboard'; // NEW
-import { MarketContext } from '@/components/location/MarketContext'; // NEW
+import { UrlImporter } from '@/components/importer/UrlImporter';
+import { ComparisonDashboard, SavedSimulation } from '@/components/calculator/ComparisonDashboard';
+import { MarketContext } from '@/components/location/MarketContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button'; // NEW
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator'; // NEW
-import { Building2, TrendingUp, Wallet, Save } from 'lucide-react'; // NEW Icons
+import { Separator } from '@/components/ui/separator';
+import { Building2, TrendingUp, Wallet, Save, FileText } from 'lucide-react';
 import { FinancialResults, InvestmentData } from '@/lib/types';
-import { calculateFinancials, calculateAllFiscalModes } from '@/lib/calculations/financials'; // NEW import
-import { calculateInvestmentScore } from '@/lib/calculations/score'; // NEW
-import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart'; // Phase 5
+import { calculateFinancials, calculateAllFiscalModes } from '@/lib/calculations/financials';
+import { calculateInvestmentScore } from '@/lib/calculations/score';
+import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart';
+import { PrintReport } from '@/components/calculator/PrintReport';
 
 const INITIAL_RESULTS: FinancialResults = {
   totalProjectCost: 0,
@@ -57,26 +58,56 @@ export default function Home() {
   const [data, setData] = useState<InvestmentData>(DEFAULT_DATA);
   const [mode, setMode] = useState('LMNP_MICRO');
   const [results, setResults] = useState<FinancialResults>(INITIAL_RESULTS);
-  const [allResults, setAllResults] = useState<Record<string, FinancialResults>>({}); // NEW
-  const [simulations, setSimulations] = useState<SavedSimulation[]>([]); // NEW
+  const [allResults, setAllResults] = useState<Record<string, FinancialResults>>({});
+  const [simulations, setSimulations] = useState<SavedSimulation[]>([]);
 
   // Recalculate whenever data or mode changes
   useEffect(() => {
     const newResults = calculateFinancials(data, mode);
-    const multiResults = calculateAllFiscalModes(data); // NEW
+    const multiResults = calculateAllFiscalModes(data);
     setResults(newResults);
-    setAllResults(multiResults); // NEW
+    setAllResults(multiResults);
   }, [data, mode]);
 
+  // Load draft & simulations on mount
+  useEffect(() => {
+    // Load Simulations
+    const savedSims = localStorage.getItem('immo-simulations');
+    if (savedSims) {
+      try {
+        setSimulations(JSON.parse(savedSims));
+      } catch (e) {
+        console.error("Failed to parse saved simulations", e);
+      }
+    }
+
+    // Load Draft
+    const savedDraft = localStorage.getItem('immo-draft');
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        setData({ ...DEFAULT_DATA, ...parsed });
+      } catch (e) {
+        console.error("Failed to parse saved draft", e);
+      }
+    }
+  }, []);
+
+  // Save drafts
+  useEffect(() => {
+    localStorage.setItem('immo-draft', JSON.stringify(data));
+  }, [data]);
+
+  // Save to LocalStorage whenever simulations change
+  useEffect(() => {
+    if (simulations.length > 0) {
+      localStorage.setItem('immo-simulations', JSON.stringify(simulations));
+    }
+  }, [simulations]);
+
   const handleImport = (importedData: Partial<InvestmentData>) => {
-    // Merge imported data with existing, but recalculate defaults if needed
-    // For simplified UX, we just override.
-    // Logic: If price changes, maybe update loan amount too?
     const newData = { ...data, ...importedData };
     if (importedData.price) {
-      // Auto-update loan amount to match price + works + furniture? 
-      // Or just match price. Let's match Price + Works + Furniture + Notary(Auto)
-      // Simplified: Match Price
       newData.loanAmount = importedData.price;
     }
     setData(newData);
@@ -97,165 +128,171 @@ export default function Home() {
 
   const loadSimulation = (sim: SavedSimulation) => {
     setData(sim.data);
-    // We might want to set selectedCity if we stored it? 
-    // Current sim data doesn't store city object, just name implies it.
   };
 
   const deleteSimulation = (id: string) => {
-    setSimulations(simulations.filter(s => s.id !== id));
+    const updated = simulations.filter(s => s.id !== id);
+    setSimulations(updated);
+    if (updated.length === 0) {
+      localStorage.removeItem('immo-simulations');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
-      {/* Header */}
-      <header className="border-b bg-white dark:bg-slate-900 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="bg-primary/10 p-2 rounded-lg">
-            <Building2 className="h-6 w-6 text-primary" />
+    <>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 print:hidden">
+        {/* Header */}
+        <header className="border-b bg-white dark:bg-slate-900 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+            <div className="bg-primary/10 p-2 rounded-lg">
+              <Building2 className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ImmoCashFlow</h1>
+              <p className="text-xs text-slate-500 font-medium">Analyzes Rentabilité Immobilière</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ImmoCashFlow</h1>
-            <p className="text-xs text-slate-500 font-medium">Analyzes Rentabilité Immobilière</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+              <FileText className="w-4 h-4" /> Dossier PDF
+            </Button>
+            <Badge variant="outline" className="px-3 py-1">v0.1.0 Beta</Badge>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Badge variant="outline" className="px-3 py-1">v0.1.0 Beta</Badge>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto max-w-7xl pt-8 px-4 sm:px-6 lg:px-8">
+        <main className="container mx-auto max-w-7xl pt-8 px-4 sm:px-6 lg:px-8">
 
-        {/* Top Section: Location & Quick Stats */}
-        <div className="grid gap-6 md:grid-cols-12 mb-8">
-          <div className="md:col-span-8 lg:col-span-9">
-            <div className="space-y-4">
-              {/* Importer */}
-              <UrlImporter onDataImported={handleImport} />
+          {/* Top Section: Location & Quick Stats */}
+          <div className="grid gap-6 md:grid-cols-12 mb-8">
+            <div className="md:col-span-8 lg:col-span-9">
+              <div className="space-y-4">
+                {/* Importer */}
+                <UrlImporter onDataImported={handleImport} />
 
-              <Card className="border-none shadow-md bg-white/50 backdrop-blur-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle>Localisation du bien</CardTitle>
-                  <CardDescription>Recherchez la commune pour récupérer les indicateurs de marché.</CardDescription>
+                <Card className="border-none shadow-md bg-white/50 backdrop-blur-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle>Localisation du bien</CardTitle>
+                    <CardDescription>Recherchez la commune pour récupérer les indicateurs de marché.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <LocationSearch onSelect={(city) => setSelectedCity(city)} />
+                    {selectedCity && (
+                      <div className="mt-4 space-y-4">
+                        <div className="p-4 bg-blue-50 text-blue-700 rounded-md border border-blue-100 text-sm">
+                          📍 Sélectionné : <strong>{selectedCity.nom}</strong> ({selectedCity.codesPostaux[0]})
+                        </div>
+
+                        {/* Market Context Integration */}
+                        {(data.surface > 0) ? (
+                          <MarketContext
+                            city={selectedCity}
+                            userPricePerSqm={data.price / data.surface}
+                            onApplyEstimates={(estimates) => {
+                              const newPrice = estimates.price * data.surface;
+                              const newRent = estimates.rent * data.surface;
+                              let newLoan = data.loanAmount;
+                              if (Math.abs(data.loanAmount - data.price) < 1000) {
+                                newLoan = newPrice;
+                              }
+
+                              setData({
+                                ...data,
+                                price: Math.round(newPrice),
+                                monthlyRent: Math.round(newRent),
+                                loanAmount: Math.round(newLoan)
+                              });
+                            }}
+                          />
+                        ) : (
+                          <div className="text-xs text-slate-400 italic">Renseignez la surface pour voir l'analyse du marché.</div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            <div className="md:col-span-4 lg:col-span-3">
+              <Card className="h-full bg-slate-900 text-white border-none shadow-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Taux Moyen</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <LocationSearch onSelect={(city) => setSelectedCity(city)} />
-                  {selectedCity && (
-                    <div className="mt-4 space-y-4">
-                      <div className="p-4 bg-blue-50 text-blue-700 rounded-md border border-blue-100 text-sm">
-                        📍 Sélectionné : <strong>{selectedCity.nom}</strong> ({selectedCity.codesPostaux[0]})
-                      </div>
-
-                      {/* Market Context Integration */}
-                      {(data.surface > 0) ? (
-                        <MarketContext
-                          city={selectedCity}
-                          userPricePerSqm={data.price / data.surface}
-                          onApplyEstimates={(estimates) => {
-                            // Smart Fill: Update Price and Rent
-                            const newPrice = estimates.price * data.surface;
-                            const newRent = estimates.rent * data.surface;
-
-                            // Also update loan if it was matching price
-                            let newLoan = data.loanAmount;
-                            // Simple logic: if loan ~= price, update loan too
-                            if (Math.abs(data.loanAmount - data.price) < 1000) {
-                              newLoan = newPrice;
-                            }
-
-                            setData({
-                              ...data,
-                              price: Math.round(newPrice),
-                              monthlyRent: Math.round(newRent),
-                              loanAmount: Math.round(newLoan)
-                            });
-                          }}
-                        />
-                      ) : (
-                        <div className="text-xs text-slate-400 italic">Renseignez la surface pour voir l'analyse du marché.</div>
-                      )}
-                    </div>
-                  )}
+                  <div className="text-3xl font-bold">3.85%</div>
+                  <p className="text-sm text-slate-400">Sur 20 ans</p>
                 </CardContent>
               </Card>
             </div>
           </div>
 
-          <div className="md:col-span-4 lg:col-span-3">
-            <Card className="h-full bg-slate-900 text-white border-none shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Taux Moyen</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">3.85%</div>
-                <p className="text-sm text-slate-400">Sur 20 ans</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+          {/* Main Content Area */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
 
-        {/* Main Content Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
-
-          {/* Left Column: Calculator Inputs */}
-          <div className="lg:col-span-7 space-y-6">
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Wallet className="w-5 h-5" /> Données Financières</CardTitle>
-                <CardDescription>Prix, Financement, fiscalité.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <CalculatorForm
-                  data={data}
-                  mode={mode}
-                  onDataChange={setData}
-                  onModeChange={setMode}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right Column: KPIs & Results */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="sticky top-24 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase">Analyse Fiscale</h3>
-                <div className="flex gap-2">
-                  <Button onClick={handleSave} size="sm" variant="outline" className="gap-2 h-9">
-                    <Save className="w-4 h-4" /> Sauvegarder
-                  </Button>
-                </div>
-              </div>
-
-              {/* Fiscal Selector */}
-              <FiscalModeSelector currentMode={mode} onModeChange={setMode} />
-
-              <FinancialResultsDisplay
-                results={results}
-                comparativeResults={allResults} // NEW
-                currentMode={mode} // NEW
-              />
+            {/* Left Column: Calculator Inputs */}
+            <div className="lg:col-span-7 space-y-6">
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Wallet className="w-5 h-5" /> Données Financières</CardTitle>
+                  <CardDescription>Prix, Financement, fiscalité.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <CalculatorForm
+                    data={data}
+                    mode={mode}
+                    onDataChange={setData}
+                    onModeChange={setMode}
+                  />
+                </CardContent>
+              </Card>
             </div>
+
+            {/* Right Column: KPIs & Results */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="sticky top-24 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase">Analyse Fiscale</h3>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSave} size="sm" variant="outline" className="gap-2 h-9">
+                      <Save className="w-4 h-4" /> Sauvegarder
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Fiscal Selector */}
+                <FiscalModeSelector currentMode={mode} onModeChange={setMode} />
+
+                <FinancialResultsDisplay
+                  results={results}
+                  comparativeResults={allResults}
+                  currentMode={mode}
+                />
+              </div>
+            </div>
+
           </div>
 
-        </div>
+          <Separator className="my-8" />
 
-        <Separator className="my-8" />
+          {/* Projections Chart */}
+          <div className="mb-12">
+            <FinancialProjectionChart data={data} results={results} />
+          </div>
 
-        {/* Projections Chart */}
-        <div className="mb-12">
-          <FinancialProjectionChart data={data} results={results} />
-        </div>
+          {/* Bottom Section: Comparison */}
+          <div className="mb-20">
+            <ComparisonDashboard
+              simulations={simulations}
+              onLoad={loadSimulation}
+              onDelete={deleteSimulation}
+            />
+          </div>
 
-        {/* Bottom Section: Comparison */}
-        <div className="mb-20">
-          <ComparisonDashboard
-            simulations={simulations}
-            onLoad={loadSimulation}
-            onDelete={deleteSimulation}
-          />
-        </div>
+        </main>
+      </div>
 
-      </main>
-    </div>
+      {/* Print Report */}
+      <PrintReport data={data} results={results} city={selectedCity} />
+    </>
   );
 }
