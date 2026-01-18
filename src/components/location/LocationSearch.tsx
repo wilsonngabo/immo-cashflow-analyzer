@@ -45,7 +45,32 @@ export function LocationSearch({ onSelect, selectedCity }: LocationSearchProps) 
         }
     }, [selectedCity]);
 
-    // ... search effect ...
+    // Search Effect - Fetch from local Internal API
+    React.useEffect(() => {
+        if (!query || query.length < 2) {
+            setResults([]);
+            return;
+        }
+
+        const fetchCities = async () => {
+            setLoading(true);
+            try {
+                // Query our internal API which reads src/data/cities.json
+                const response = await fetch(`/api/cities/search?q=${encodeURIComponent(query)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setResults(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch cities:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const timeoutId = setTimeout(fetchCities, 300);
+        return () => clearTimeout(timeoutId);
+    }, [query]);
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
