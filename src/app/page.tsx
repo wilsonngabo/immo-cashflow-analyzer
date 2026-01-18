@@ -6,14 +6,14 @@ import { CalculatorForm } from '@/components/calculator/CalculatorForm';
 import { FiscalModeSelector } from '@/components/calculator/FiscalModeSelector';
 import { FinancialResultsDisplay } from '@/components/calculator/FinancialResultsDisplay';
 import { UrlImporter } from '@/components/importer/UrlImporter';
-import { ComparisonDashboard, SavedSimulation } from '@/components/calculator/ComparisonDashboard';
+import { ComparisonDashboard } from '@/components/calculator/ComparisonDashboard';
 import { MarketContext } from '@/components/location/MarketContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Building2, TrendingUp, Wallet, Save, FileText } from 'lucide-react';
-import { FinancialResults, InvestmentData } from '@/lib/types';
+import { FinancialResults, InvestmentData, SavedSimulation } from '@/lib/types';
 import { calculateFinancials, calculateAllFiscalModes } from '@/lib/calculations/financials';
 import { calculateInvestmentScore } from '@/lib/calculations/score';
 import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart';
@@ -105,11 +105,37 @@ export default function Home() {
     }
   }, [simulations]);
 
-  const handleImport = (importedData: Partial<InvestmentData>) => {
+  const handleImport = async (importedData: any) => {
     const newData = { ...data, ...importedData };
+
+    // Safety check for loan amount
     if (importedData.price) {
       newData.loanAmount = importedData.price;
     }
+
+    // Handle City Import
+    if (importedData.city || importedData.zipCode) {
+      try {
+        const query = importedData.zipCode || importedData.city;
+        const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${query}&fields=nom,code,codesPostaux,population`);
+        if (res.ok) {
+          const cities = await res.json();
+          if (cities && cities.length > 0) {
+            setSelectedCity(cities[0]);
+          }
+        } else {
+          // Fallback search by name
+          if (importedData.city) {
+            const resName = await fetch(`https://geo.api.gouv.fr/communes?nom=${importedData.city}&fields=nom,code,codesPostaux,population`);
+            const citiesName = await resName.json();
+            if (citiesName && citiesName.length > 0) setSelectedCity(citiesName[0]);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to auto-select city from import", e);
+      }
+    }
+
     setData(newData);
   };
 

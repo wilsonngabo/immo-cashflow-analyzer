@@ -46,6 +46,20 @@ export async function POST(request: Request) {
             if (lowerHtml.includes('meublé')) {
                 data.furniture = 3000;
             }
+
+            // Location from URL or HTML
+            // SeLoger URL: .../ville-cp/... e.g. /paris-75/ or /lyon-3eme-69/
+            // Leboncoin: often has location in JSON-LD
+            const urlMatch = url.match(/\/([a-z-]+)-(\d{5})\//i) || url.match(/\/([a-z-]+)-(\d{2})\//i);
+            if (urlMatch) {
+                data.city = urlMatch[1].replace(/-/g, ' '); // simple formatting
+                const zip = urlMatch[2];
+                data.zipCode = zip.length === 2 ? `${zip}000` : zip; // 75 -> 75000 approx
+            } else {
+                // Try to find zip in text
+                const zipMatch = html.match(/(\d{5})\s+[a-zA-Z]/);
+                if (zipMatch) data.zipCode = zipMatch[1];
+            }
         }
 
         // 3. Fallback / Enhancement: URL Analysis (Simulated Logic)
@@ -65,6 +79,13 @@ export async function POST(request: Request) {
                 data.propertyType = 'OLD';
             } else {
                 data.works = 0;
+            }
+
+            // Sim location fallback
+            if (!data.city) {
+                if (url.includes('paris')) { data.city = "paris"; data.zipCode = "75001"; }
+                else if (url.includes('lyon')) { data.city = "lyon"; data.zipCode = "69001"; }
+                else { data.city = "bordeaux"; data.zipCode = "33000"; }
             }
         }
 
