@@ -76,6 +76,25 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
         }
     }, [data.revenueN2, data.householdSize, data.propertyType, data.includePTZ]);
 
+    // Dynamic calculation for UI display
+    const aidDetails = (() => {
+        if (data.propertyType !== 'HLM' || data.revenueN2 === undefined || !data.householdSize) return { ptz: null, action: null };
+
+        const notary = data.manualNotaryFees ? data.notaryFees : calculateNotaryFees(data.price, data.propertyType, data.reducedNotaryFees);
+        const totalProject = data.price + data.works + data.furniture + notary;
+        const zone = data.zone || 'B1';
+
+        return {
+            ptz: getPTZDetails(totalProject, data.revenueN2, data.householdSize, zone),
+            action: getActionLogementDetails(totalProject, data.revenueN2, data.householdSize)
+        };
+    })();
+
+    const ptzAmount = aidDetails.ptz?.eligible ? aidDetails.ptz.amount : 0;
+    const actionAmount = aidDetails.action?.eligible ? aidDetails.action.amount : 0;
+    const mainLoan = Math.max(0, data.loanAmount - (data.includePTZ ? ptzAmount : 0) - (data.includeActionLogement ? actionAmount : 0));
+
+
     // Handler for manual eligibility check
     const handleCheckEligibility = () => {
         if (data.revenueN2 === undefined || data.revenueN2 === null || !data.householdSize) {
@@ -83,11 +102,16 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
             return;
         }
 
-        // Calculate Cost Basis
+        const zone = data.zone || 'B1';
+
+        // Use the memoized/dynamic values which are fresh
+        // Rethink: aidDetails is fresh render-time. 
+        // We can just rely on it or re-call to be explicit? 
+        // Let's reuse logic for updates.
+
+        // Re-calc to be sure inside handler
         const notary = data.manualNotaryFees ? data.notaryFees : calculateNotaryFees(data.price, data.propertyType, data.reducedNotaryFees);
         const totalProject = data.price + data.works + data.furniture + notary;
-
-        const zone = data.zone || 'B1';
         const ptz = getPTZDetails(totalProject, data.revenueN2, data.householdSize, zone);
         const action = getActionLogementDetails(totalProject, data.revenueN2, data.householdSize);
 
@@ -208,29 +232,6 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                             </Select>
                         </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <Label className="text-xs">Revenu Fiscal N-2</Label>
-                            <Input
-                                type="number"
-                                className="h-8 text-xs bg-white"
-                                placeholder="ex: 28000"
-                                value={data.revenueN2 ?? ''}
-                                onChange={(e) => handleChange('revenueN2', parseFloat(e.target.value) || 0)}
-                            />
-                        </div>
-                        <div>
-                            <Label className="text-xs">Personnes Fiscales</Label>
-                            <Input
-                                type="number"
-                                className="h-8 text-xs bg-white"
-                                placeholder="ex: 1"
-                                value={data.householdSize ?? ''}
-                                onChange={(e) => handleChange('householdSize', parseFloat(e.target.value) || 1)}
-                            />
-                        </div>
-                    </div>
                 </div>
             )}
 
@@ -331,7 +332,9 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                                     onChange={(e) => handleChange('includePTZ', e.target.checked)}
                                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                 />
-                                <Label htmlFor="ptz" className="text-xs cursor-pointer">PTZ (30k)</Label>
+                                <Label htmlFor="ptz" className="text-xs cursor-pointer">
+                                    PTZ {aidDetails.ptz?.eligible ? `(${ptzAmount.toLocaleString()} €)` : ''}
+                                </Label>
                             </div>
                             <div className="flex items-center gap-2">
                                 <input
@@ -341,7 +344,9 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                                     onChange={(e) => handleChange('includeActionLogement', e.target.checked)}
                                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                 />
-                                <Label htmlFor="action" className="text-xs cursor-pointer">Action Logement (15k)</Label>
+                                <Label htmlFor="action" className="text-xs cursor-pointer">
+                                    Action Logement {aidDetails.action?.eligible ? `(${actionAmount.toLocaleString()} €)` : ''}
+                                </Label>
                             </div>
                         </div>
                     </div>
@@ -349,15 +354,35 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label className="flex justify-between">
-                            <span>Montant Crédit (€)</span>
+                            <span>Montant Crédit Total (€)</span>
                             <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500 font-normal">Calculé</span>
                         </Label>
                         <Input
                             type="number"
                             value={Math.round(data.loanAmount)}
                             readOnly
-                            className="bg-slate-50 text-slate-500"
+                            className="bg-slate-50 text-slate-500 font-semibold"
                         />
+                        {(data.includePTZ || data.includeActionLogement) && (
+                            <div className="text-[10px] text-slate-500 space-y-0.5">
+                                <div className="flex justify-between">
+                                    <span>Prêt Bancaire:</span>
+                                    <span>{Math.round(mainLoan).toLocaleString()} €</span>
+                                </div>
+                                {data.includePTZ && (
+                                    <div className="flex justify-between text-blue-600">
+                                        <span>Dont PTZ:</span>
+                                        <span>{ptzAmount.toLocaleString()} €</span>
+                                    </div>
+                                )}
+                                {data.includeActionLogement && (
+                                    <div className="flex justify-between text-blue-600">
+                                        <span>Dont Action Log.:</span>
+                                        <span>{actionAmount.toLocaleString()} €</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -426,6 +451,74 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                         onChange={(e) => handleChange('condoFees', parseFloat(e.target.value) || 0)}
                     />
                 </div>
+                <div className="space-y-2">
+                    <Label>Mode de Chauffage</Label>
+                    <Select
+                        value={data.heatingType || 'INDIVIDUAL'}
+                        onValueChange={(val: any) => handleChange('heatingType', val)}
+                    >
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="INDIVIDUAL">Individuel (Elec/Gaz)</SelectItem>
+                            <SelectItem value="COLLECTIVE">Collectif (Inclus Charges)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            <Separator />
+
+            {/* Récapitulatif Complet */}
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Récapitulatif Mensuel (Estimé)</h3>
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm space-y-2">
+                {(() => {
+                    const energy = Math.round(data.surface * (data.heatingType === 'COLLECTIVE' ? 1.0 : 2.5));
+                    const internet = 30;
+                    const pno = 15;
+                    const propertyTaxMonthly = Math.round((data.propertyTax || 0) / 12);
+                    const totalLoan = Math.round(data.loanAmount > 0 ? (mainLoan * (data.interestRate / 100 / 12) / (1 - Math.pow(1 + data.interestRate / 100 / 12, -data.loanDuration * 12))) + (data.includePTZ ? ptzAmount / (20 * 12) : 0) + (data.includeActionLogement ? actionAmount / (20 * 12) : 0) : 0); // Quick approx for display, or use calculatedFinancials if available?
+                    // Actually, we should rely on the MAIN calculated monthly payment from `calculateFinancials` but we are inside the form.
+                    // Let's compute a quick "Simulate Payment" here or grab it from a helper if possible.
+                    // For now, let's use a rough Estimate sum or just display the components we know.
+                    // Wait, we need the ACTUAL monthly payment from the main loan.
+                    // We can re-call calculateMonthlyPayment(mainLoan, interestRate, duration).
+
+                    // Re-calculate Main Loan Payment for display
+                    const r = data.interestRate / 100 / 12;
+                    const n = data.loanDuration * 12;
+                    const mainPayment = mainLoan > 0 ? (r === 0 ? mainLoan / n : (mainLoan * r) / (1 - Math.pow(1 + r, -n))) : 0;
+
+                    // Approximations for PTZ/Action (often deferred, but let's smooth over 20y for "Charge" view or 15y? Standard PTZ is often 20-25y. Let's assume 20y smooth for cashflow impact view).
+                    const ptzPayment = data.includePTZ ? ptzAmount / (20 * 12) : 0;
+                    const actionPayment = data.includeActionLogement ? actionAmount / (20 * 12) : 0;
+
+                    const totalMonthly = mainPayment + ptzPayment + actionPayment + (data.condoFees || 0) + propertyTaxMonthly + energy + internet + pno;
+
+                    return (
+                        <>
+                            <div className="flex justify-between font-semibold border-b pb-2 mb-2">
+                                <span>Total Sorties Cash</span>
+                                <span>~{Math.round(totalMonthly).toLocaleString()} €/mois</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-slate-600">
+                                <div className="flex justify-between"><span>Prêt Bancaire</span><span>{Math.round(mainPayment)} €</span></div>
+                                {data.includePTZ && <div className="flex justify-between text-blue-600"><span>PTZ (Lissé 20 ans)</span><span>{Math.round(ptzPayment)} €</span></div>}
+                                {data.includeActionLogement && <div className="flex justify-between text-blue-600"><span>Action Logement (Lissé)</span><span>{Math.round(actionPayment)} €</span></div>}
+                                <div className="flex justify-between"><span>Charges Copro</span><span>{data.condoFees || 0} €</span></div>
+                                <div className="flex justify-between"><span>Taxe Foncière (mensualisée)</span><span>{propertyTaxMonthly} €</span></div>
+                                <div className="flex justify-between text-slate-500">
+                                    <span>Énergie (Estim. {data.heatingType === 'COLLECTIVE' ? 'Coll.' : 'Indiv.'})</span>
+                                    <span>~{energy} €</span>
+                                </div>
+                                <div className="flex justify-between text-slate-500"><span>Internet</span><span>~{internet} €</span></div>
+                                <div className="flex justify-between text-slate-500"><span>Assurance PNO</span><span>~{pno} €</span></div>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
         </div>
     );

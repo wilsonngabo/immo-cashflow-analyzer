@@ -37,6 +37,7 @@ export interface InvestmentData {
     manualNotaryFees?: boolean; // If true, do not auto-calc notary fees
     reducedNotaryFees?: boolean; // If true (for HLM), use 3% instead of 8%
     zone?: 'A' | 'B1' | 'B2' | 'C'; // Geographic zone for PTZ
+    heatingType?: 'INDIVIDUAL' | 'COLLECTIVE'; // Chauffage individuel vs collectif
 }
 
 export interface FinancialResults {
