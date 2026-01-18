@@ -143,22 +143,33 @@ export function FinancialResultsDisplay({ results, comparativeResults, currentMo
                             </div>
                         </div>
                     )}
+
+                    {results.debtRatio && results.debtRatio > 0 && (
+                        <div className={`mt-4 p-3 rounded-lg border ${results.debtRatio > 35 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold uppercase">Taux d'endettement (Est.)</span>
+                                <span className="font-bold text-lg">{results.debtRatio.toFixed(1)}%</span>
+                            </div>
+                            <div className="text-[10px] opacity-80 mt-1">
+                                {results.debtRatio > 35 ? "Attention: Supérieur aux 35% recommandés." : "Excellent: Inférieur aux 35%."}
+                            </div>
+                        </div>
+                    )}
+
+                    {!isPositive && (
+                        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                            <div className="flex">
+                                <div className="ml-3">
+                                    <p className="text-sm text-yellow-700">
+                                        Votre projet nécessite un effort d'épargne mensuel.
+                                        Essayez d'augmenter l'apport ou de négocier le prix d'achat.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
-
-            {!isPositive && (
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                    <div className="flex">
-                        <div className="ml-3">
-                            <p className="text-sm text-yellow-700">
-                                Votre projet nécessite un effort d'épargne mensuel.
-                                Essayez d'augmenter l'apport ou de négocier le prix d'achat.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
-

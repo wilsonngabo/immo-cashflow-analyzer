@@ -16,6 +16,7 @@ import { Building2, TrendingUp, Wallet, Save } from 'lucide-react'; // NEW Icons
 import { FinancialResults, InvestmentData } from '@/lib/types';
 import { calculateFinancials, calculateAllFiscalModes } from '@/lib/calculations/financials'; // NEW import
 import { calculateInvestmentScore } from '@/lib/calculations/score'; // NEW
+import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart'; // Phase 5
 
 const INITIAL_RESULTS: FinancialResults = {
   totalProjectCost: 0,
@@ -45,7 +46,10 @@ const DEFAULT_DATA: InvestmentData = {
   condoFees: 100,
   pnoInsurance: 150,
   managementFees: 0,
-  vacancyMonth: 1
+  vacancyMonth: 1,
+  annualSalary: 0,
+  includePTZ: false,
+  includeActionLogement: false
 };
 
 export default function Home() {
@@ -142,10 +146,32 @@ export default function Home() {
                       </div>
 
                       {/* Market Context Integration */}
-                      {(data.surface > 0 && data.price > 0) ? (
-                        <MarketContext city={selectedCity} userPricePerSqm={data.price / data.surface} />
+                      {(data.surface > 0) ? (
+                        <MarketContext
+                          city={selectedCity}
+                          userPricePerSqm={data.price / data.surface}
+                          onApplyEstimates={(estimates) => {
+                            // Smart Fill: Update Price and Rent
+                            const newPrice = estimates.price * data.surface;
+                            const newRent = estimates.rent * data.surface;
+
+                            // Also update loan if it was matching price
+                            let newLoan = data.loanAmount;
+                            // Simple logic: if loan ~= price, update loan too
+                            if (Math.abs(data.loanAmount - data.price) < 1000) {
+                              newLoan = newPrice;
+                            }
+
+                            setData({
+                              ...data,
+                              price: Math.round(newPrice),
+                              monthlyRent: Math.round(newRent),
+                              loanAmount: Math.round(newLoan)
+                            });
+                          }}
+                        />
                       ) : (
-                        <div className="text-xs text-slate-400 italic">Renseignez le prix et la surface pour voir l'analyse du marché.</div>
+                        <div className="text-xs text-slate-400 italic">Renseignez la surface pour voir l'analyse du marché.</div>
                       )}
                     </div>
                   )}
@@ -193,9 +219,11 @@ export default function Home() {
             <div className="sticky top-24 space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase">Analyse Fiscale</h3>
-                <Button onClick={handleSave} size="sm" variant="outline" className="gap-2 h-8">
-                  <Save className="w-3 h-3" /> Sauvegarder
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={handleSave} size="sm" variant="outline" className="gap-2 h-9">
+                    <Save className="w-4 h-4" /> Sauvegarder
+                  </Button>
+                </div>
               </div>
 
               {/* Fiscal Selector */}
@@ -212,6 +240,11 @@ export default function Home() {
         </div>
 
         <Separator className="my-8" />
+
+        {/* Projections Chart */}
+        <div className="mb-12">
+          <FinancialProjectionChart data={data} results={results} />
+        </div>
 
         {/* Bottom Section: Comparison */}
         <div className="mb-20">

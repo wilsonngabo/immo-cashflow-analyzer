@@ -1,20 +1,19 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin, Info } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, Info, ArrowDownToLine } from "lucide-react";
+import { estimateMarketData } from "@/lib/api/market";
+import { Button } from "@/components/ui/button";
 
 interface MarketContextProps {
     city: any; // GeoAPI city object
     userPricePerSqm: number;
+    onApplyEstimates?: (estimates: { price: number; rent: number }) => void; // New prop
 }
 
-export function MarketContext({ city, userPricePerSqm }: MarketContextProps) {
+export function MarketContext({ city, userPricePerSqm, onApplyEstimates }: MarketContextProps) {
     if (!city) return null;
 
-    // Mocking market data logic based on city name length/hash to be consistent but "fake"
-    // Real app would fetch this from an API (DVF, MeilleursAgents scraper etc)
-    const basePrice = 2000;
-    const variance = (city.nom.length * 100) + (parseInt(city.code) / 100);
-    const marketPrice = Math.round(basePrice + variance);
+    const { pricePerSqm: marketPrice, rentPerSqm: marketRent } = estimateMarketData(city);
 
     const diffPercent = ((userPricePerSqm - marketPrice) / marketPrice) * 100;
     const isGoodDeal = diffPercent < 0;
@@ -22,10 +21,23 @@ export function MarketContext({ city, userPricePerSqm }: MarketContextProps) {
     return (
         <Card className="glass-card border-none bg-gradient-to-br from-indigo-50 to-white dark:from-slate-900 dark:to-slate-800">
             <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-indigo-500" />
-                    Contexte Marché : {city.nom}
-                </CardTitle>
+                <div className="flex justify-between items-center">
+                    <CardTitle className="text-sm font-medium text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-indigo-500" />
+                        Contexte Marché : {city.nom}
+                    </CardTitle>
+                    {onApplyEstimates && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                            onClick={() => onApplyEstimates({ price: marketPrice, rent: marketRent })}
+                        >
+                            <ArrowDownToLine className="w-3 h-3 mr-1" />
+                            Utiliser ces moyennes
+                        </Button>
+                    )}
+                </div>
             </CardHeader>
             <CardContent>
                 <div className="flex justify-between items-end mb-4">
@@ -33,6 +45,9 @@ export function MarketContext({ city, userPricePerSqm }: MarketContextProps) {
                         <div className="text-xs text-slate-500 uppercase font-semibold">Prix Moyen (Estimé)</div>
                         <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                             {marketPrice} €<span className="text-sm font-normal text-slate-400">/m²</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                            Loyer estimé: <strong>{marketRent} €/m²</strong>
                         </div>
                     </div>
                     <div>
