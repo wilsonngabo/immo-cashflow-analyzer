@@ -27,20 +27,30 @@ export default function MarketExplorer() {
         if (!selectedCity) return;
         setLoading(true);
         try {
-            // Use city name and zip from selected object
-            const results = await scrapeSeLogerByCity(selectedCity.nom, selectedCity.codesPostaux[0]);
-            setListings(results);
+            // Call API implementation
+            const res = await fetch('/api/market/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    city: selectedCity.nom,
+                    zip: selectedCity.codesPostaux[0]
+                })
+            });
 
-            // Calculate Stats
-            if (results.length > 0) {
-                const totalSqM = results.reduce((acc, curr) => acc + curr.pricePerSqm, 0);
-                setStats({
-                    avgPriceSqM: Math.round(totalSqM / results.length),
-                    count: results.length
-                });
+            if (res.ok) {
+                const results = await res.json();
+                setListings(results);
+
+                if (results.length > 0) {
+                    const totalSqM = results.reduce((acc: any, curr: any) => acc + curr.pricePerSqm, 0);
+                    setStats({
+                        avgPriceSqM: Math.round(totalSqM / results.length),
+                        count: results.length
+                    });
+                }
             }
         } catch (e) {
-            console.error(e);
+            console.error("Scan failed", e);
         } finally {
             setLoading(false);
         }
