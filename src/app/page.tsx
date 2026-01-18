@@ -187,6 +187,9 @@ export default function Home() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = '/market'}>
+              Market Explorer
+            </Button>
             <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
               <FileText className="w-4 h-4" /> Dossier PDF
             </Button>

@@ -15,20 +15,20 @@ import {
     TableRow,
 } from "@/components/ui/table"
 
+import { LocationSearch } from '@/components/location/LocationSearch';
+
 export default function MarketExplorer() {
-    const [city, setCity] = useState('');
-    const [zip, setZip] = useState('');
+    const [selectedCity, setSelectedCity] = useState<any>(null);
     const [listings, setListings] = useState<MarketListing[]>([]);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState({ avgPriceSqM: 0, count: 0 });
 
     const handleScan = async () => {
-        if (!city || !zip) return;
+        if (!selectedCity) return;
         setLoading(true);
         try {
-            // In a real app, this would be a server action or API call
-            // For now calling the engine directly (client-side simulation)
-            const results = await scrapeSeLogerByCity(city, zip);
+            // Use city name and zip from selected object
+            const results = await scrapeSeLogerByCity(selectedCity.nom, selectedCity.codesPostaux[0]);
             setListings(results);
 
             // Calculate Stats
@@ -47,8 +47,27 @@ export default function MarketExplorer() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
-            <div className="max-w-6xl mx-auto space-y-8">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
+            {/* Header */}
+            <header className="border-b bg-white dark:bg-slate-900 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.location.href = '/'}>
+                    {/* Reusing existing icons or just text */}
+                    <div className="bg-primary/10 p-2 rounded-lg">
+                        <Database className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ImmoCashFlow</h1>
+                        <p className="text-xs text-slate-500 font-medium">Market Explorer</p>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => window.location.href = '/'}>
+                        ← Retour Calculatrice
+                    </Button>
+                </div>
+            </header>
+
+            <div className="max-w-6xl mx-auto space-y-8 pt-8 px-4">
 
                 <div className="flex items-center gap-4">
                     <Database className="w-8 h-8 text-primary" />
@@ -63,18 +82,20 @@ export default function MarketExplorer() {
                     <Card className="md:col-span-1 h-fit">
                         <CardHeader>
                             <CardTitle>Scanner une Ville</CardTitle>
-                            <CardDescription>Récupérer les annonces SeLoger</CardDescription>
+                            <CardDescription>Choisir une ville dans la base de données</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Ville</label>
-                                <Input placeholder="ex: Bordeaux" value={city} onChange={e => setCity(e.target.value)} />
+                                <label className="text-sm font-medium">Ville cible</label>
+                                <LocationSearch onSelect={setSelectedCity} />
+                                {selectedCity && (
+                                    <p className="text-xs text-green-600 font-medium">
+                                        Cible: {selectedCity.nom} ({selectedCity.codesPostaux[0]})
+                                    </p>
+                                )}
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Code Postal</label>
-                                <Input placeholder="ex: 33000" value={zip} onChange={e => setZip(e.target.value)} />
-                            </div>
-                            <Button className="w-full gap-2" onClick={handleScan} disabled={loading || !city || !zip}>
+
+                            <Button className="w-full gap-2" onClick={handleScan} disabled={loading || !selectedCity}>
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                                 Lancer le Scraper
                             </Button>
