@@ -116,19 +116,27 @@ export default function Home() {
     // Handle City Import
     if (importedData.city || importedData.zipCode) {
       try {
-        const query = importedData.zipCode || importedData.city;
-        const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${query}&fields=nom,code,codesPostaux,population`);
-        if (res.ok) {
-          const cities = await res.json();
-          if (cities && cities.length > 0) {
-            setSelectedCity(cities[0]);
-          }
-        } else {
-          // Fallback search by name
-          if (importedData.city) {
-            const resName = await fetch(`https://geo.api.gouv.fr/communes?nom=${importedData.city}&fields=nom,code,codesPostaux,population`);
+        // Priority: Search by Name if available (more accurate for SeLoger URLs like /marly-le-roi-78/)
+        // because "78" becomes "78000" (Versailles) which is wrong for Marly.
+        if (importedData.city) {
+          const resName = await fetch(`https://geo.api.gouv.fr/communes?nom=${importedData.city}&fields=nom,code,codesPostaux,population&boost=population`);
+          if (resName.ok) {
             const citiesName = await resName.json();
-            if (citiesName && citiesName.length > 0) setSelectedCity(citiesName[0]);
+            if (citiesName && citiesName.length > 0) {
+              setSelectedCity(citiesName[0]);
+              return; // Found by name, stop here
+            }
+          }
+        }
+
+        // Fallback: Search by Zip if name failed or not provided
+        if (importedData.zipCode) {
+          const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${importedData.zipCode}&fields=nom,code,codesPostaux,population`);
+          if (res.ok) {
+            const cities = await res.json();
+            if (cities && cities.length > 0) {
+              setSelectedCity(cities[0]);
+            }
           }
         }
       } catch (e) {
