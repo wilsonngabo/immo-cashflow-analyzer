@@ -40,6 +40,15 @@ export interface InvestmentData {
     heatingType?: 'INDIVIDUAL' | 'COLLECTIVE'; // Chauffage individuel vs collectif
 }
 
+export interface SavedSimulation {
+    id: string;
+    date: string;
+    name: string;
+    data: InvestmentData;
+    results: FinancialResults;
+    score: number;
+}
+
 export interface FinancialResults {
     totalProjectCost: number;
     monthlyMortgage: number;
