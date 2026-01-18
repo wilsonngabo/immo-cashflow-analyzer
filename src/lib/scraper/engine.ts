@@ -1,5 +1,6 @@
 import { scrapeWithPuppeteer } from './puppeteer';
 import { scrapeWithApify } from './apify';
+import { scrapeWithCheerio } from './cheerio';
 
 export interface MarketListing {
     id: string;
@@ -17,16 +18,23 @@ export async function scrapeSeLogerByCity(cityName: string, zipCode: string): Pr
     try {
         console.log(`[Engine] Requested scan for ${cityName} (${zipCode})`);
 
-        // 1. Try Apify (The "Better Way") - Cloud Scraper
-        // Requires APIFY_API_TOKEN in .env
+        // 1. Try Apify (The "Better Way")
         const apifyResults = await scrapeWithApify(cityName, zipCode);
         if (apifyResults && apifyResults.length > 0) {
             console.log(`[Engine] Successfully scraped ${apifyResults.length} items via APIFY.`);
             return apifyResults;
         }
 
-        // 2. Fallback to Local Puppeteer
-        console.log("[Engine] Apify not configured or returned 0. Trying Local Puppeteer...");
+        // 2. Try Cheerio (Fast HTTP Request - "Python Style")
+        console.log("[Engine] Trying Lightweight Cheerio Scraper...");
+        const cheerioResults = await scrapeWithCheerio(cityName, zipCode);
+        if (cheerioResults && cheerioResults.length > 0) {
+            console.log(`[Engine] Successfully scraped ${cheerioResults.length} items via Cheerio.`);
+            return cheerioResults;
+        }
+
+        // 3. Fallback to Local Puppeteer (Heavy Browser)
+        console.log("[Engine] Cheerio failed (likely blocked). Trying Local Puppeteer...");
         const realListings = await scrapeWithPuppeteer(cityName, zipCode);
 
         if (realListings && realListings.length > 0) {
