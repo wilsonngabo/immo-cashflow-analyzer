@@ -91,40 +91,51 @@ export async function scrapeWithPuppeteer(city: string, zipCode: string): Promis
             console.error("[Puppeteer Stealth] JSON Parse failed", e);
         }
 
-        // DOM Fallback if JSON failed
+        // DOM Fallback - Robust Text-Based Scraping
         if (entries.length === 0) {
-            console.log("[Puppeteer Stealth] Fallback to DOM Scraping...");
+            console.log("[Puppeteer Stealth] Fallback to robust DOM text scraping...");
             entries = await page.evaluate(() => {
-                const cards = Array.from(document.querySelectorAll('[data-testid="sl-card-container"]')); // Standard ID
-                // Also try generic class if testid fails
-                const cardsAlt = cards.length > 0 ? cards : Array.from(document.querySelectorAll('div[class*="Card__CardContainer"]'));
+                const listings: any[] = [];
+                // Find all links that look like property ads
+                const links = Array.from(document.querySelectorAll('a[href*="/annonces/"], a[href*="/achat/"]'));
 
-                return cardsAlt.map(card => {
-                    const priceText = card.querySelector('[data-test="price"], [class*="Price__PriceContainer"]')?.textContent || "0";
-                    const price = parseInt(priceText.replace(/\D/g, '')) || 0;
+                links.forEach(link => {
+                    // Go up to find the card container (heuristic: block element with sufficient text)
+                    let card = link.parentElement;
+                    while (card && (card.innerText.length < 50 || card.tagName === 'SPAN')) {
+                        card = card.parentElement;
+                        if (!card || card.tagName === 'BODY') return;
+                    }
 
-                    const tags = Array.from(card.querySelectorAll('[data-test="sl-tags"] div, [class*="Tags__TagContainer"] div'));
-                    let surface = 0;
-                    tags.forEach(t => {
-                        if (t.textContent?.includes('m²')) {
-                            surface = parseFloat(t.textContent.replace(',', '.').replace(/\D/g, '')) || 0;
+                    if (!card) return;
+                    const text = card.innerText;
+
+                    // Regex Extraction
+                    const priceMatch = text.match(/(\d{1,3}(?: \d{3})*)\s*€/);
+                    const surfaceMatch = text.match(/(\d+(?:,\d+)?)\s*m²/);
+
+                    if (priceMatch) {
+                        const price = parseInt(priceMatch[1].replace(/\s/g, '')) || 0;
+                        const surface = surfaceMatch ? parseFloat(surfaceMatch[1].replace(',', '.')) : 0;
+                        const href = link.getAttribute('href') || "";
+
+                        // Avoid duplicates
+                        if (!listings.find(l => l.url === href)) {
+                            listings.push({
+                                id: href.split('/').pop()?.split('.htm')[0] || Math.random().toString(),
+                                city: "", // Inferred later
+                                zipCode: "",
+                                price,
+                                surface,
+                                pricePerSqm: surface > 0 ? Math.round(price / surface) : 0,
+                                url: href.startsWith('http') ? href : `https://www.seloger.com${href}`,
+                                isPro: text.includes('Pro') || text.includes('Agenc'),
+                                source: 'REAL'
+                            });
                         }
-                    });
-
-                    const link = card.querySelector('a')?.getAttribute('href') || "";
-
-                    return {
-                        id: Math.random().toString(),
-                        city: "",
-                        zipCode: "",
-                        price,
-                        surface,
-                        pricePerSqm: surface > 0 ? Math.round(price / surface) : 0,
-                        url: link,
-                        isPro: true,
-                        source: 'REAL'
-                    };
+                    }
                 });
+                return listings;
             });
 
             // Fixup
