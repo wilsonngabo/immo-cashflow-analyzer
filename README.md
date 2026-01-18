@@ -1,93 +1,77 @@
-# 🏙️ ImmoCashFlow - French Real Estate Analyzer
+# 🏙️ ImmoCashFlow Analyzer
 
-**ImmoCashFlow** is a modern, premium web application designed to help real estate investors calculate the profitability of their projects in France instantly.
+**ImmoCashFlow** est une application web moderne de simulation et d'analyse d'investissements immobiliers locatifs en France.
 
-Built with **Next.js 16**, **Tailwind CSS**, and **Framer Motion**, it offers a refined user experience with smart financial modeling.
+Conçue pour les investisseurs exigeants, elle permet de calculer la rentabilité précise d'un projet en tenant compte de la fiscalité (LMNP, SCI), des aides (PTZ, Action Logement), et de comparer différents scénarios.
 
-![ImmoCashFlow Dashboard](public/window.svg)
-
-## ✨ Key Features (V1)
-
-### 📊 Smart Financial Calculator
-- **Complete Modeling**: Inputs for Price, Works, Furniture, Rent, Charges, and Taxes.
-- **Auto-Financing**: 
-  - Automatically calculates **Loan Amount** based on inputs and **Personal Contribution (Apport)**.
-  - Smart **Notary Fees** calculation based on property type (Ancien 8%, Neuf 2.5%, HLM 3%).
-- **KPIs**: Real-time calculation of **Gross Yield**, **Net Yield**, **Cashflow**, and **Score**.
-
-### ⚖️ Advanced Fiscal Comparison
-- **Multi-Regime Analysis**: Instantly compares 4 fiscal strategies simultaneously:
-  - 🏠 **LMNP Micro-BIC** (50% abatement)
-  - 💼 **LMNP Réel** (Amortization & Deductions)
-  - 🏢 **SCI à l'IS** (Corporate Tax)
-  - 📃 **Foncier Micro** (30% abatement)
-- **Best Option Highlight**: Automatically sorts and highlights the most profitable regime.
-
-### 📍 Market Intelligence
-- **Location Engine**: Integrated with `geo.api.gouv.fr` for precise city selection.
-- **Market Context**: Compares your project's price per m² against the local market average.
-- **Deal Rating**: Visual "Good Deal" vs "Overpriced" indicators.
-
-### 🎨 Premium Design
-- **Glassmorphism UI**: Modern aesthetic with translucent cards and blur effects.
-- **Rich Visuals**: Gradient backgrounds, stacked bar charts for expense breakdown, and smooth transitions.
-- **Responsive**: Fully optimized for Desktop and Mobile.
+![ImmoCashFlow Dashboard](https://via.placeholder.com/800x400?text=Dashboard+ImmoCashFlow)
 
 ---
 
-## 🛠️ Tech Stack
+## ✨ Fonctionnalités Clés
 
-- **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **UI Components**: [Shadcn/ui](https://ui.shadcn.com/)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **Data Fetching**: Native Fetch API
+### 1. 🧮 Calculateur Financier Avancé
+- **Fiscalité Intégrée** : Comparaison automatique LMNP (Micro/Réel), Foncier (Micro/Réel), et SCI à l'IS.
+- **Prêts complexes** : Prise en charge des prêts aidés (PTZ lissé, Action Logement) avec conditions de zones (A, B1, B2, C).
+- **KPIs en Temps Réel** : Cashflow (Brut/Net/Net-Net), Rendement, TRI, Taux d'endettement.
+
+### 2. 🌍 Analyse de Marché Locale
+- **Intégration Gouv.fr** : Recherche automatique par commune.
+- **Smart Data** : Estimation automatique des prix/m² et loyers (simulés) selon la ville choisie.
+
+### 3. 🔥 Gestion des Charges & Énergie
+- **Estimation Énergétique** : Calcul automatique du coût Élec/Gaz selon la surface et le type de chauffage (Individuel/Collectif).
+- **Récapitulatif Détaillé** : Vue claire des sorties mensuelles (Crédit, Taxe Foncière, Charges, Internet, PNO).
+
+### 4. ⚖️ Comparateur Intelligent (V2)
+- **Tableau de Bord** : Comparez plusieurs simulations côte à côte.
+- **Badges de Verdict** : Le système analyse vos projets et attribue des badges :
+    - 🏆 *Cashflow King*
+    - 🚀 *Top Rentabilité*
+    - ✅ *Autofinancé*
+- **Persistance** : Vos simulations sont sauvegardées automatiquement (LocalStorage).
+
+### 5. 📄 Dossier Bancaire PDF
+- Exportez un **Dossier de Présentation** propre et professionnel pour votre banquier.
+- Inclus : Synthèse du projet, Plan de financement, Détail des charges.
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Stack Technique
 
-### Prerequisites
-- Node.js 18+ 
-- pnpm (recommended) or npm/yarn
+- **Framework** : [Next.js 14](https://nextjs.org/) (App Router)
+- **Langage** : [TypeScript](https://www.typescriptlang.org/)
+- **Styling** : [Tailwind CSS](https://tailwindcss.com/) + [Shadcn/ui](https://ui.shadcn.com/)
+- **Icônes** : [Lucide React](https://lucide.dev/)
+- **Graphiques** : [Recharts](https://recharts.org/)
 
-### Installation
+---
 
-1. **Clone the repository**
+## 🚀 Installation & Démarrage
+
+1. Cloner le projet :
    ```bash
    git clone https://github.com/wilsonngabo/immo-cashflow-analyzer.git
    cd immo-cashflow-analyzer
    ```
 
-2. **Install dependencies**
+2. Installer les dépendances (pnpm recommandé) :
    ```bash
    pnpm install
+   # ou
+   npm install
    ```
 
-3. **Run Development Server**
+3. Lancer le serveur de développement :
    ```bash
    pnpm dev
    ```
 
-4. **Open Application**
-   Visit [http://localhost:3000](http://localhost:3000)
+4. Ouvrez [http://localhost:3000](http://localhost:3000) dans votre navigateur.
 
 ---
 
-## 📂 Project Structure
+## 📝 Auteur
 
-```
-├── src/
-│   ├── app/                 # Next.js App Router Pages
-│   ├── components/
-│   │   ├── calculator/      # Financial Logic UI (Forms, Results, Selector)
-│   │   ├── location/        # Map & Search Components
-│   │   ├── ui/              # Shadcn Primitive Components
-│   ├── lib/
-│   │   ├── calculations/    # Core Financial Algorithms (loan, tax, notary)
-│   │   └── types.ts         # TypeScript Definitions
-```
-
-## 📝 License
-
-Private / Proprietary. Created by Ruzindana Wilson.
+Développé dans le cadre d'un projet d'analyse financière immobilière.
+**Version :** 0.1.0 (Beta)
