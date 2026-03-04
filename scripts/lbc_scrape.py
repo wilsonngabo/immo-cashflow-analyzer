@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-LeBonCoin scraper using curl_cffi for TLS browser impersonation.
+LeBonCoin scraper using curl_cffi for TLS browser impersonation (cost-efficient, bypasses many bot checks).
 Based on: https://github.com/etienne-hd/lbc
-Pagination: pivot-based (cursor) to go past the ~2500 offset limit, see https://github.com/thomasync/leboncoin-api-search
-Real endpoint: POST https://api.leboncoin.fr/finder/search
+Pagination: https://github.com/thomasync/leboncoin-api-search
+Refs: https://www.reddit.com/r/webscraping/comments/1co6a3g/ | https://curl-cffi.readthedocs.io/
 
 Usage:
     python scripts/lbc_scrape.py --city Paris --limit 100 --type buy --db data/properties.db
+    LBC_PROXY=http://user:pass@host:port python scripts/lbc_scrape.py ...  # optional proxy
 """
 
 import os
@@ -52,6 +53,23 @@ LBC_API_URL = "https://api.leboncoin.fr/finder/search"
 # Fetch single ad by id (same as https://github.com/thomasync/leboncoin-api-search searchById)
 LBC_ADFINDER_URL = "https://api.leboncoin.fr/api/adfinder/v1/myads"
 IMPERSONATE_OPTIONS = ["chrome110", "chrome107", "chrome104", "edge101"]
+
+
+def _get_proxies():
+    """Optional proxy from env (e.g. residential proxy to reduce Datadome blocks)."""
+    p = os.environ.get("LBC_PROXY") or os.environ.get("HTTPS_PROXY")
+    if not p:
+        return None
+    return {"https": p, "http": p}
+
+
+def make_session(impersonate=None):
+    """Session with TLS impersonation and optional proxy (LBC_PROXY or HTTPS_PROXY)."""
+    imp = impersonate or random.choice(IMPERSONATE_OPTIONS)
+    proxies = _get_proxies()
+    if proxies:
+        return cf_requests.Session(impersonate=imp, proxies=proxies)
+    return cf_requests.Session(impersonate=imp)
 
 
 def init_db(db_path: str):
@@ -151,7 +169,7 @@ def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int
     real_estate_type = (
         REAL_ESTATE_APARTMENT if kind == "apartment"
         else REAL_ESTATE_HOUSE if kind == "house"
-        else REAL_ESTATE_ALL
+        else REAL_ESTATE_ALL  # "both" ou autre
     )
 
     enums: dict = {
@@ -462,8 +480,7 @@ def main():
 
     # Single-ad fetch for URL import: output JSON to stdout and exit
     if args.ad_id is not None:
-        impersonate = random.choice(IMPERSONATE_OPTIONS)
-        session = cf_requests.Session(impersonate=impersonate)
+        session = make_session()
         if sum(1 for _ in session.cookies) == 0:
             try:
                 session.get("https://www.leboncoin.fr/", timeout=15)
@@ -500,7 +517,6 @@ def main():
 
     conn = init_db(db_path)
 
-    impersonate = random.choice(IMPERSONATE_OPTIONS)
     city_key = args.city.lower()
     city_label = str(CITIES.get(city_key, {}).get("label", args.city))
     radius_m = args.radius * 1000
@@ -513,7 +529,7 @@ def main():
     print(f"Scraping LeBonCoin: city={args.city}, type={args.type}, kind={args.kind}, limit={total_to_fetch}", file=sys.stderr)
 
     # Reuse 1 session
-    session = cf_requests.Session(impersonate=impersonate)
+    session = make_session()
 
     while len(properties) < total_to_fetch:
         batch_size = min(page_size, total_to_fetch - len(properties))

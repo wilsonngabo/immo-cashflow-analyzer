@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Pipeline LBC : par région puis par tranche de prix 25k€.
+Pipeline LBC : par région puis par tranche de prix.
+Optimisée pour ~1 h max : tranches 200k€, un seul type (appart+maison), plafond 200 annonces/recherche.
 Sortie : un fichier Parquet par région (data/region_<slug>.parquet).
-Pas d'incrémental : on recrée les parquets à chaque run.
-En fin : merge Parquet → SQLite, puis affichage durée + nombre de listings.
 """
 
 import os
@@ -19,18 +18,19 @@ from regions import REGIONS, DEPARTMENTS, region_slug
 TARGET_TYPES = ["buy"]
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 DB_FILE = os.path.join(DATA_DIR, "properties.db")
-MAX_PER_SEARCH_OFFSET = 2500
 PAGE_SIZE = 100
-MAX_ADS_PER_SEARCH = 50_000
+# Plafond par recherche (dépt × tranche) pour tenir ~1 h avec délais anti-403
+MAX_ADS_PER_SEARCH = 200
+MAX_PER_SEARCH_OFFSET = 2500  # limite API sans pivot
 
+# Un seul type : appart + maison en une recherche (réduit par 2 le nombre de requêtes)
 PROPERTY_KINDS_FULL = [
-    ("apartment", "appartement"),
-    ("house", "maison"),
+    ("both", "appart+maison"),
 ]
 
-# Tranches de 25k€
-PRICE_RANGES_25K = [
-    (p, p + 25_000) for p in range(0, 2_000_000, 25_000)
+# Tranches de 200k€ (10 tranches au lieu de 80) pour tenir ~1 h
+PRICE_RANGES = [
+    (p, p + 200_000) for p in range(0, 2_000_000, 200_000)
 ]
 
 
@@ -136,16 +136,19 @@ def main() -> None:
     for listing_type in TARGET_TYPES:
         for region_name, dept_codes in regions_items:
             slug = region_slug(region_name)
-            print(f"\n>>> Région: {region_name} ({slug}) — {len(dept_codes)} départements × {len(PRICE_RANGES_25K)} tranches × {len(PROPERTY_KINDS_FULL)} types")
+            print(f"\n>>> Région: {region_name} ({slug}) — {len(dept_codes)} départements × {len(PRICE_RANGES)} tranches × {len(PROPERTY_KINDS_FULL)} types")
             region_props: list[dict] = []
 
             impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
-            session = lbc_scrape.cf_requests.Session(impersonate=impersonate)
+            session = lbc_scrape.make_session(impersonate=impersonate)
+            consecutive_errors = 0
+            BYPASS_AFTER_N_ERRORS = 3
+            BYPASS_SLEEP_SEC = 45
 
             for dept_code in dept_codes:
                 dept_name = DEPARTMENTS.get(dept_code, dept_code)
                 for kind_key, kind_label in PROPERTY_KINDS_FULL:
-                    for price_min, price_max in PRICE_RANGES_25K:
+                    for price_min, price_max in PRICE_RANGES:
                         if price_max > 2_000_000:
                             continue
                         total_fetched = 0
@@ -173,11 +176,19 @@ def main() -> None:
                             )
                             result = lbc_scrape.scrape_page(session, payload)
                             if "error" in result:
-                                print(f"    [!] {dept_code} {range_label}: {result['error']}", file=sys.stderr)
+                                consecutive_errors += 1
+                                print(f"    [!] {dept_code} {range_label}: {result['error']} (#{consecutive_errors})", file=sys.stderr)
+                                if consecutive_errors >= BYPASS_AFTER_N_ERRORS:
+                                    print(f"    --> {BYPASS_AFTER_N_ERRORS} échecs consécutifs: pause {BYPASS_SLEEP_SEC}s puis nouvelle session (bypass)", file=sys.stderr)
+                                    time.sleep(BYPASS_SLEEP_SEC)
+                                    impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
+                                    session = lbc_scrape.make_session(impersonate=impersonate)
+                                    consecutive_errors = 0
                                 break
                             ads = result.get("ads") or []
                             if not ads:
                                 break
+                            consecutive_errors = 0  # reset on success
                             if total_in_search is None and "total" in result:
                                 total_in_search = result.get("total")
                             for ad in ads:
@@ -226,6 +237,7 @@ def main() -> None:
     print(f"Durée totale: {minutes} min {secs} s")
     print(f"Listings en base: {final_count}")
     print(f"Annonces distinctes: {distinct_count}")
+    print("--> Les données sont dans data/properties.db et s'affichent sur le site (recharger la page annonces).")
     print("==================================================")
 
 

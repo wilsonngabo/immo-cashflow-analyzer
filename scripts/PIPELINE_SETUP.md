@@ -44,20 +44,20 @@ En fin d’exécution, la pipeline affiche **la durée totale** et le nombre de 
 
 ## Fonctionnement (par région, tranches 25k€, Parquet)
 
-- La pipeline parcourt **par région** (liste alignée avec le filtre région du site), puis pour chaque région par **département**, **tranche de prix 25k€** (0–25k, 25k–50k, …) et type de bien (appartement / maison).
+- La pipeline parcourt **par région**, puis pour chaque région par **département**, **tranche de prix 200k€** (0–200k, 200k–400k, …) et **un seul type** (appartement + maison). Plafond **200 annonces** par recherche pour rester sous ~1 h.
 - **Sortie** : un fichier Parquet par région dans `data/region_<slug>.parquet`. Lorsqu’on filtre par région sur le site, seules les lignes de cette région sont concernées (index SQL sur `region`).
 - **Pas d’incrémental** : à chaque run, les Parquet sont recréés puis fusionnés dans `data/properties.db` pour le site.
 - Dépendances Python : `pip install -r requirements.txt` (curl_cffi, pyarrow).
 
 ## Durée théorique (full run)
 
-En **théorie**, pour un run complet (toutes les régions) :
+Pipeline **optimisée pour ~1 h max** :
 
-- **18 régions**, ~**96 départements** au total, **80 tranches** de 25k€ (0 → 2M€), **2 types** de bien (appartement, maison).
-- Soit **~15 360 recherches** (dépt × tranche × type). Chaque recherche peut déclencher **plusieurs requêtes API** (pagination par 100, jusqu’à 2 500 ou 50k annonces par recherche).
-- Avec **1,5–3 s** entre chaque requête pour limiter les 403 Datadome, le nombre d’appels réels dépend du volume d’annonces par tranche.
+- **Tranches de 200k€** (10 tranches : 0–200k, 200k–400k, … jusqu’à 2M) au lieu de 80 × 25k.
+- **Un seul type de recherche** : appartement + maison en une requête (`both`).
+- **Plafond 200 annonces** par (département × tranche) → au plus 2 appels API par recherche.
 
-**Estimation indicative : 15 à 40+ heures** pour un run complet (sans erreurs 403). En pratique, beaucoup de tranches renvoient peu de pages ; les régions très denses (Île-de-France, PACA, etc.) rallongent la durée.
+Avec **18 régions**, ~**96 départements**, **10 tranches**, **1 type** : ~960 recherches × 2 appels × 2,25 s ≈ **~1 h**.
 
 Pour tester plus vite : `PIPELINE_LIMIT_REGIONS=1 python scripts/pipeline.py` (une seule région).
 
