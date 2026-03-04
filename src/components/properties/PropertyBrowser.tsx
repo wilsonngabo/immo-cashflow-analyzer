@@ -11,12 +11,13 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
     Database, Search, RefreshCw, Loader2, Building2, MapPin,
-    TrendingUp, ChevronLeft, ChevronRight, Zap, AlertCircle, Trash2, Camera, PlayCircle
+    TrendingUp, ChevronLeft, ChevronRight, Zap, AlertCircle, Trash2, Camera, PlayCircle, ExternalLink
 } from 'lucide-react';
 import { Property, InvestmentData } from '@/lib/types';
+import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxRegimeFinancials } from '@/lib/calculations/annonces';
 
 interface PropertyBrowserProps {
-    onAnalyze: (data: Partial<InvestmentData>) => void;
+    onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string }) => void;
 }
 
 interface DBStats {
@@ -39,6 +40,19 @@ function sourceBadge(source: string) {
     return <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">SeLoger</span>;
 }
 
+function sourceLinkLabel(source: string): string {
+    if (source === 'leboncoin') return 'Voir sur LeBonCoin';
+    if (source === 'bienveo') return 'Voir sur Bienveo';
+    return 'Voir sur SeLoger';
+}
+
+/** Fallback yield/cashflow when API did not provide them (e.g. buy with price only). */
+function fallbackYieldCashflow(price: number): { yield: number; cf: number } {
+    const y = 6;
+    const cf = (price * (y / 100) * 0.7 - (price * 1.08 * 0.073)) / 12;
+    return { yield: y, cf: Math.round(cf) };
+}
+
 export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const { profile, isLoaded } = useProfile();
     const [properties, setProperties] = useState<Property[]>([]);
@@ -51,6 +65,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
+    const [apiError, setApiError] = useState<string | null>(null);
 
     const [filterRegion, setFilterRegion] = useState('all');
     const [filterDepartment, setFilterDepartment] = useState('all');
@@ -62,26 +77,28 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const [filterMinYield, setFilterMinYield] = useState('');
     const [filterMinCashflow, setFilterMinCashflow] = useState('');
     const [filterSource, setFilterSource] = useState('all');
+    const [filterOwnerType, setFilterOwnerType] = useState('all');
     const [sortBy, setSortBy] = useState('scrapedAt');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Populate initial filters with profile if available
-    useEffect(() => {
-        if (isLoaded && profile) {
-            if (profile.targetYieldMin > 0 && filterMinYield === '') setFilterMinYield(String(profile.targetYieldMin));
-            if (profile.targetCashflowMin !== 0 && filterMinCashflow === '') setFilterMinCashflow(String(profile.targetCashflowMin));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoaded, profile]);
+    // DVF: prix médian au m² par code postal (pour "sous/sur le marché")
+    const [dvfByPostal, setDvfByPostal] = useState<Record<string, number | null>>({});
+
+    // Do NOT pre-fill filterMinYield/filterMinCashflow from profile here: it would trigger
+    // a second fetch with strict filters and an empty result, wiping the list.
+
 
 
     const fetchProperties = useCallback(async (p = 1) => {
         setLoading(true);
+        setApiError(null);
         try {
             const params = new URLSearchParams({
                 page: String(p),
                 pageSize: '24',
                 sortBy,
-                sortDir: 'desc',
+                sortDir,
+                listingType: 'buy',
             });
             if (filterRegion !== 'all') {
                 params.set('region', filterRegion);
@@ -95,19 +112,58 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             if (filterMinYield) params.set('minYield', filterMinYield);
             if (filterMinCashflow) params.set('minCashflow', filterMinCashflow);
             if (filterSource !== 'all') params.set('source', filterSource);
+            if (filterOwnerType !== 'all') params.set('ownerType', filterOwnerType);
 
             const res = await fetch(`/api/properties?${params}`);
             const json = await res.json();
+            if (!res.ok) {
+                setApiError(json.error || `Erreur ${res.status}`);
+                setProperties([]);
+                setTotal(0);
+                setTotalPages(1);
+                return;
+            }
             setProperties(json.properties ?? []);
             setStats(json.stats ?? null);
             setTotal(json.pagination?.total ?? 0);
             setTotalPages(json.pagination?.totalPages ?? 1);
         } catch (e) {
-            console.error(e);
+            const msg = e instanceof Error ? e.message : String(e);
+            setApiError(msg || 'Erreur réseau');
+            setProperties([]);
+            setTotal(0);
         } finally {
             setLoading(false);
         }
-    }, [filterRegion, regions, filterDepartment, filterCity, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, sortBy]);
+    }, [filterRegion, filterDepartment, filterCity, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
+
+    // Ré-ordonner par le cashflow/renta affiché (meilleur régime) pour que l'ordre corresponde à l'écran
+    const displayedProperties = useMemo(() => {
+        if (properties.length === 0) return properties;
+        if (sortBy === 'estimatedCashflow' && isLoaded && profile) {
+            return [...properties].sort((a, b) => {
+                const cfA = (a.listingType === 'buy' && a.price > 0 && (a.surface || a.pricePerSqm))
+                    ? getBestTaxRegimeFinancials(a, profile).monthlyCashFlowNetNet
+                    : (a.estimatedCashflow ?? 0);
+                const cfB = (b.listingType === 'buy' && b.price > 0 && (b.surface || b.pricePerSqm))
+                    ? getBestTaxRegimeFinancials(b, profile).monthlyCashFlowNetNet
+                    : (b.estimatedCashflow ?? 0);
+                return sortDir === 'desc' ? cfB - cfA : cfA - cfB;
+            });
+        }
+        if (sortBy === 'estimatedYield' && isLoaded && profile) {
+            return [...properties].sort((a, b) => {
+                const yA = (a.listingType === 'buy' && a.price > 0 && (a.surface || a.pricePerSqm))
+                    ? getBestTaxRegimeFinancials(a, profile).yieldBrut
+                    : (a.estimatedYield ?? 0);
+                const yB = (b.listingType === 'buy' && b.price > 0 && (b.surface || b.pricePerSqm))
+                    ? getBestTaxRegimeFinancials(b, profile).yieldBrut
+                    : (b.estimatedYield ?? 0);
+                return sortDir === 'desc' ? yB - yA : yA - yB;
+            });
+        }
+        return properties;
+    }, [properties, sortBy, sortDir, isLoaded, profile]);
 
     useEffect(() => {
         fetch('https://geo.api.gouv.fr/regions')
@@ -137,6 +193,25 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         setPage(1);
     }, [fetchProperties]);
 
+    // Fetch DVF median price per m² for unique postal codes on the current page
+    useEffect(() => {
+        const postals = new Set<string>();
+        properties.forEach(p => {
+            if (p.listingType === 'buy' && p.postalCode && p.price && (p.surface || p.pricePerSqm)) {
+                postals.add(p.postalCode);
+            }
+        });
+        postals.forEach(code => {
+            if (dvfByPostal[code] !== undefined) return;
+            fetch(`/api/dvf?postalCode=${encodeURIComponent(code)}`)
+                .then(r => r.json())
+                .then(data => {
+                    setDvfByPostal(prev => ({ ...prev, [code]: data.medianPricePerSqm ?? null }));
+                })
+                .catch(() => {});
+        });
+    }, [properties]);
+
 
 
     const handleClearDB = async () => {
@@ -151,13 +226,35 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     };
 
     const handleAnalyze = (p: Property) => {
-        onAnalyze({
-            price: p.price,
-            surface: p.surface ?? 0,
-            loanAmount: p.price,
-            propertyType: 'OLD',
-        });
-        // Scroll to top
+        if (isLoaded && profile && p.listingType === 'buy' && p.price > 0) {
+            const data = buildInvestmentDataFromProperty(p, profile);
+            const { bestMode } = getBestTaxRegimeFinancials(p, profile);
+            onAnalyze({
+                price: data.price,
+                surface: data.surface,
+                loanAmount: data.loanAmount,
+                notaryFees: data.notaryFees,
+                monthlyRent: data.monthlyRent,
+                propertyType: data.propertyType,
+                propertyTax: data.propertyTax,
+                condoFees: data.condoFees,
+                pnoInsurance: data.pnoInsurance,
+                personalContribution: data.personalContribution,
+                interestRate: data.interestRate,
+                loanDuration: data.loanDuration,
+            }, { fiscalMode: bestMode });
+        } else {
+            const monthlyRent = p.estimatedYield != null
+                ? Math.round((p.price * p.estimatedYield / 100) / 12)
+                : Math.round((p.price * 0.06) / 12);
+            onAnalyze({
+                price: p.price,
+                surface: p.surface ?? 0,
+                loanAmount: p.price,
+                monthlyRent,
+                propertyType: 'OLD',
+            });
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -195,7 +292,10 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                         Base d&apos;Annonces Immobilières
                     </h2>
                     <p className="text-sm text-slate-500 mt-0.5">
-                        {total > 0 ? `${total} annonces en base` : 'Aucune annonce — lancez une collecte ci-dessous'}
+                        {total > 0 ? `${total.toLocaleString('fr-FR')} annonce${total > 1 ? 's' : ''} en base` : 'Aucun résultat pour les critères choisis'}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                        La pipeline boucle par département et par tranche de prix pour récupérer toutes les annonces (jusqu&apos;à 2 500 par recherche).
                     </p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -226,18 +326,17 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                         { label: 'Surface moyenne', value: `${stats.avgSurface} m²`, sub: 'Annonces avec surface' },
                         { label: 'Prix/m² moyen', value: `${stats.avgPricePerSqm.toLocaleString('fr-FR')} €/m²`, sub: 'Annonces calculables' },
                     ].map(s => (
-                        <div key={s.label} className="bg-white rounded-lg border p-3 shadow-sm">
-                            <div className="text-xs text-slate-500">{s.label}</div>
-                            <div className="text-lg font-bold text-slate-800 mt-0.5">{s.value}</div>
-                            <div className="text-[10px] text-slate-400">{s.sub}</div>
+                        <div key={s.label} className="glass-card rounded-xl p-4 border border-slate-200/60 bg-white/80">
+                            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{s.label}</div>
+                            <div className="text-lg font-bold text-slate-800 mt-1">{s.value}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{s.sub}</div>
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* Filter bar */}
-            {total > 0 && (
-                <div className="flex flex-wrap gap-2 items-end">
+            {/* Filter bar - toujours visible pour pouvoir modifier les critères */}
+            <div className="flex flex-wrap gap-2 items-end">
                     <div className="space-y-1">
                         <Label className="text-xs text-slate-500">Région</Label>
                         <Select value={filterRegion} onValueChange={(v) => {
@@ -328,7 +427,20 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                         </Select>
                     </div>
                     <div className="space-y-1">
-                        <Label className="text-xs text-slate-500">Trier par</Label>
+                        <Label className="text-xs text-slate-500">Annonceur</Label>
+                        <Select value={filterOwnerType} onValueChange={setFilterOwnerType}>
+                            <SelectTrigger className="h-8 text-xs w-32">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Tous (pro + particulier)</SelectItem>
+                                <SelectItem value="private">Particulier</SelectItem>
+                                <SelectItem value="professional">Pro</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Ordonner par</Label>
                         <Select value={sortBy} onValueChange={setSortBy}>
                             <SelectTrigger className="h-8 text-xs w-36">
                                 <SelectValue />
@@ -343,33 +455,53 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                             </SelectContent>
                         </Select>
                     </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Ordre</Label>
+                        <Select value={sortDir} onValueChange={(v) => setSortDir(v as 'asc' | 'desc')}>
+                            <SelectTrigger className="h-8 text-xs w-32">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="desc">Décroissant</SelectItem>
+                                <SelectItem value="asc">Croissant</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => fetchProperties(1)}>
                         <Search className="w-3.5 h-3.5" /> Filtrer
                     </Button>
                 </div>
-            )}
 
             {/* Property grid */}
-            {loading ? (
+            {apiError ? (
+                <div className="text-center py-12 text-amber-700 bg-amber-50 rounded-xl border border-amber-200 max-w-md mx-auto">
+                    <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-70" />
+                    <p className="text-sm font-medium">Erreur de chargement</p>
+                    <p className="text-xs mt-1 text-amber-600">{apiError}</p>
+                    <Button variant="outline" size="sm" className="mt-4" onClick={() => fetchProperties(1)}>
+                        <RefreshCw className="w-4 h-4 mr-2" /> Réessayer
+                    </Button>
+                </div>
+            ) : loading ? (
                 <div className="flex justify-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
                 </div>
-            ) : properties.length === 0 && total === 0 ? (
-                <div className="text-center py-16 text-slate-400">
-                    <Database className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">Aucune annonce en base.</p>
-                    <p className="text-xs mt-1">Lancez une collecte ci-dessus pour démarrer.</p>
+            ) : properties.length === 0 || total === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                    <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-medium">Aucun résultat</p>
+                    <p className="text-xs mt-1">Modifiez les filtres ou lancez une collecte ci-dessus.</p>
                 </div>
             ) : (
                 <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {properties.map(p => (
-                            <Card key={p.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow group">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                        {displayedProperties.map((p, idx) => (
+                            <Card key={p.id} className="flex flex-col overflow-hidden card-hover rounded-xl border border-slate-200/80 bg-white shadow-sm group animate-fade-in-up" style={{ animationDelay: `${Math.min(idx * 0.04, 0.36)}s` }}>
                                 {/* Image */}
                                 {p.imageUrl ? (
-                                    <div className="h-32 bg-slate-100 overflow-hidden relative">
+                                    <div className="h-36 bg-slate-100 overflow-hidden relative">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                        <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
                                         {p.nbPhotos !== undefined && p.nbPhotos > 0 && (
                                             <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
                                                 <Camera className="w-3 h-3" /> {p.nbPhotos}
@@ -377,14 +509,18 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="h-32 bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                                        <Building2 className="w-8 h-8 text-slate-300" />
+                                    <div className="h-36 bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
+                                        <Building2 className="w-10 h-10 text-slate-300" />
                                     </div>
                                 )}
 
-                                <CardContent className="flex-1 flex flex-col p-3">
+                                <CardContent className="flex-1 flex flex-col p-4">
                                     <div className="flex justify-between items-start mb-1.5">
-                                        {sourceBadge(p.source)}
+                                        <div className="flex flex-wrap gap-1 items-center">
+                                            {sourceBadge(p.source)}
+                                            {p.ownerType === 'professional' && <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-medium">Pro</span>}
+                                            {p.ownerType === 'private' && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">Particulier</span>}
+                                        </div>
                                         <span className="text-[10px] text-slate-400">
                                             {p.listingType === 'buy' ? 'Achat' : 'Location'}
                                         </span>
@@ -398,16 +534,66 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                         {fmtPrice(p.price)}
                                     </div>
 
+                                    {/* Prix vs marché DVF (source: data.gouv.fr / DVF) */}
+                                    {p.listingType === 'buy' && p.price && p.postalCode && (p.surface || p.pricePerSqm) && (() => {
+                                        const median = dvfByPostal[p.postalCode!];
+                                        if (median == null || median <= 0) return null;
+                                        const listingPricePerSqm = p.pricePerSqm ?? (p.surface ? p.price / p.surface : 0);
+                                        if (!listingPricePerSqm) return null;
+                                        const pct = Math.round(((listingPricePerSqm - median) / median) * 100);
+                                        const surface = p.surface ?? (p.pricePerSqm ? p.price / p.pricePerSqm : 0);
+                                        return (
+                                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mb-0.5">
+                                                {pct <= -5 && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Sous le marché (~{Math.abs(pct)}%)</span>}
+                                                {pct >= 10 && <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Sur le marché (+{pct}%)</span>}
+                                                {pct > -5 && pct < 10 && <span className="text-[10px] text-slate-500">Prix proche du marché</span>}
+                                                {surface > 0 && (
+                                                    <span className="text-[10px] text-slate-400">
+                                                        Loyer estimé marché: ~{Math.round((median * surface * 0.05) / 12)}€/mois
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
                                     <div className="flex flex-wrap gap-1.5 mt-1 mb-1 text-[10px] text-slate-500">
                                         {p.surface && <span className="bg-slate-100 px-1.5 py-0.5 rounded">{p.surface} m²</span>}
                                         {p.rooms && <span className="bg-slate-100 px-1.5 py-0.5 rounded">{p.rooms} pièces</span>}
                                         {p.pricePerSqm && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{p.pricePerSqm.toLocaleString('fr-FR')} €/m²</span>}
-                                        {p.estimatedYield !== undefined && <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{p.estimatedYield}% Renta</span>}
-                                        {p.estimatedCashflow !== undefined && (
-                                            <span className={`px-1.5 py-0.5 rounded font-medium ${p.estimatedCashflow > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                                {p.estimatedCashflow > 0 ? '+' : ''}{p.estimatedCashflow}€ CF
-                                            </span>
-                                        )}
+                                        {(p.listingType === 'buy' && p.price > 0 && (p.surface || p.pricePerSqm) && isLoaded && profile) ? (() => {
+                                            const f = getBestTaxRegimeFinancials(p, profile);
+                                            return (
+                                                <>
+                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{f.yieldBrut.toFixed(1)}% Renta</span>
+                                                    <span className={`px-1.5 py-0.5 rounded font-medium ${f.monthlyCashFlowNetNet > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                                        {f.monthlyCashFlowNetNet > 0 ? '+' : ''}{Math.round(f.monthlyCashFlowNetNet)}€ CF
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${f.monthlyCashFlowNetNetColoc != null
+                                                        ? (f.monthlyCashFlowNetNetColoc > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600')
+                                                        : 'bg-slate-100 text-slate-400'
+                                                    }`} title={f.monthlyCashFlowNetNetColoc != null ? 'Cashflow net en colocation (loyer × 1,28)' : 'Moins de 2 chambres'}>
+                                                        {f.monthlyCashFlowNetNetColoc != null ? `${f.monthlyCashFlowNetNetColoc > 0 ? '+' : ''}${Math.round(f.monthlyCashFlowNetNetColoc)}€` : '—'} coloc
+                                                    </span>
+                                                    <span className="text-[9px] text-slate-500 border border-slate-200 px-1 py-0.5 rounded" title="Régime fiscal pour ce CF net">{f.bestModeLabel}</span>
+                                                </>
+                                            );
+                                        })() : p.listingType === 'buy' && p.price > 0 ? (() => {
+                                            const y = p.estimatedYield ?? fallbackYieldCashflow(p.price).yield;
+                                            const cf = p.estimatedCashflow ?? fallbackYieldCashflow(p.price).cf;
+                                            const canColoc = (p.bedrooms != null && p.bedrooms >= 2) || (p.rooms != null && p.rooms >= 3);
+                                            const cfColoc = canColoc ? Math.round(cf * 1.28) : null;
+                                            return (
+                                                <>
+                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{y}% Renta</span>
+                                                    <span className={`px-1.5 py-0.5 rounded font-medium ${cf > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                                        {cf > 0 ? '+' : ''}{cf}€ CF
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${cfColoc != null ? (cfColoc > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600') : 'bg-slate-100 text-slate-400'}`}>
+                                                        {cfColoc != null ? `${cfColoc > 0 ? '+' : ''}${cfColoc}€` : '—'} coloc
+                                                    </span>
+                                                </>
+                                            );
+                                        })() : null}
                                     </div>
 
                                     {/* Secondary Attributes Row */}
@@ -437,6 +623,16 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                         </div>
                                     )}
 
+                                    <a
+                                        href={p.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium mb-2"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        {sourceLinkLabel(p.source)}
+                                    </a>
+
                                     <Separator className="mb-2" />
 
                                     <div className="flex gap-1.5 mt-auto">
@@ -446,14 +642,6 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                             onClick={() => handleAnalyze(p)}
                                         >
                                             <TrendingUp className="w-3 h-3" /> Analyser
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 text-xs px-2"
-                                            onClick={() => window.open(p.url, '_blank')}
-                                        >
-                                            Voir
                                         </Button>
                                     </div>
                                 </CardContent>

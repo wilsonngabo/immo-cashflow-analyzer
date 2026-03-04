@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Building2, TrendingUp, Wallet, Save, FileText, User } from 'lucide-react';
+import { Building2, TrendingUp, Wallet, Save, FileText, User, ArrowLeft } from 'lucide-react';
 import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart';
 import { PrintReport } from '@/components/calculator/PrintReport';
 import { SensitivityPanel } from '@/components/calculator/SensitivityPanel';
@@ -129,7 +129,7 @@ export default function Home() {
 
   const handleImport = (importedData: Partial<InvestmentData>) => {
     const newData = { ...data, ...importedData };
-    if (importedData.price) {
+    if (importedData.price != null && importedData.loanAmount === undefined) {
       newData.loanAmount = importedData.price;
     }
     setData(newData);
@@ -162,57 +162,65 @@ export default function Home() {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 print:hidden">
-        {/* Header */}
-        <header className="border-b bg-white dark:bg-slate-900 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary/10 p-2 rounded-lg">
-              <Building2 className="h-6 w-6 text-primary" />
+      <div className="min-h-screen bg-[hsl(var(--background))] dark:bg-slate-950 pb-0 print:hidden flex flex-col">
+        {/* Header — sticky nav */}
+        <header className="sticky top-0 z-20 px-6 py-4 flex items-center justify-between bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/80 shadow-sm transition-all duration-300">
+          <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-br from-primary/20 to-primary/5 p-3 rounded-2xl border border-primary/10 shadow-sm">
+              <Building2 className="h-7 w-7 text-primary" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ImmoCashFlow</h1>
-              <p className="text-xs text-slate-500 font-medium">Analyzes Rentabilité Immobilière</p>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">Rentabilité & cashflow immobilier</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            {/* View switcher */}
-            <div className="flex rounded-lg border bg-slate-50 p-0.5 gap-0.5">
+          <div className="flex gap-3 items-center">
+            <div className="flex rounded-2xl border border-slate-200 bg-slate-100/80 dark:bg-slate-800/80 p-1 gap-0.5">
               <button
                 onClick={() => setActiveView('calculator')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${activeView === 'calculator' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                className={`px-4 py-2 text-sm rounded-xl font-medium transition-all duration-200 ${activeView === 'calculator' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white border border-slate-200/80' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >Calculatrice</button>
               <button
                 onClick={() => setActiveView('browser')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${activeView === 'browser' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                className={`px-4 py-2 text-sm rounded-xl font-medium transition-all duration-200 ${activeView === 'browser' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white border border-slate-200/80' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >Annonces</button>
             </div>
 
             <Link href="/profile">
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-2 rounded-xl">
                 <User className="w-4 h-4" /> Profil
               </Button>
             </Link>
 
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+            <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={() => window.print()}>
               <FileText className="w-4 h-4" /> Dossier PDF
             </Button>
-            <Badge variant="outline" className="px-3 py-1">v0.1.0 Beta</Badge>
+            <Badge variant="secondary" className="px-3 py-1 rounded-lg text-xs">Beta</Badge>
           </div>
         </header>
 
-        <main className="container mx-auto max-w-7xl pt-8 px-4 sm:px-6 lg:px-8">
+        <main className="flex-1 container mx-auto max-w-7xl pt-10 pb-16 px-4 sm:px-6 lg:px-8 overflow-auto">
 
           {activeView === 'browser' ? (
             <PropertyBrowser
-              onAnalyze={(partial) => {
+              onAnalyze={(partial, options) => {
                 handleImport(partial);
+                if (options?.fiscalMode) setMode(options.fiscalMode);
                 setActiveView('calculator');
               }}
             />
           ) : (
             <>
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setActiveView('browser')}
+                >
+                  <ArrowLeft className="w-4 h-4" /> Retour aux annonces
+                </Button>
+              </div>
               {/* Top Section: Location & Quick Stats */}
               <div className="grid gap-6 md:grid-cols-12 mb-8">
                 <div className="md:col-span-8 lg:col-span-9">

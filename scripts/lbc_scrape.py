@@ -90,39 +90,45 @@ def init_db(db_path: str):
             hasCellar BOOLEAN,
             hasGarage BOOLEAN,
             terrain REAL,
-            nbPhotos INTEGER
+            nbPhotos INTEGER,
+            ownerType TEXT
         )
     ''')
-    conn.commit()
+    try:
+        conn.execute("ALTER TABLE properties ADD COLUMN ownerType TEXT")
+        conn.commit()
+    except Exception:
+        pass
     return conn
 
 def save_to_db(conn, properties):
     if not properties:
-        return
-    
+        return (0, 0)
     query = '''
         INSERT OR REPLACE INTO properties (
             id, source, title, price, surface, rooms, city, postalCode, propertyKind,
             listingType, url, imageUrl, description, scrapedAt, pricePerSqm,
             dpe, ges, charges, floor, hasElevator, hasBalcony, hasParking,
             builtYear, propertyTax, isNew, energyHeating, heatingType,
-            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos
+            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos, ownerType
         ) VALUES (
             :id, :source, :title, :price, :surface, :rooms, :city, :postalCode, :propertyKind,
             :listingType, :url, :imageUrl, :description, :scrapedAt, :pricePerSqm,
             :dpe, :ges, :charges, :floor, :hasElevator, :hasBalcony, :hasParking,
             :builtYear, :propertyTax, :isNew, :energyHeating, :heatingType,
-            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos
+            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos, :ownerType
         )
     '''
     conn.executemany(query, properties)
     conn.commit()
+    return (len(properties), 0)
 
 
 def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int,
                   offset: int, min_price: int | None, max_price: int | None,
                   min_surface: int | None, radius_m: int = 10_000, 
-                  department_code: str | None = None) -> dict:
+                  department_code: str | None = None,
+                  owner_type: str = "all") -> dict:
     city = CITIES.get((city_key or "").lower(), CITIES["paris"])
 
     category = CATEGORY_BUY if listing_type == "buy" else CATEGORY_RENT
@@ -132,13 +138,21 @@ def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int
         else REAL_ESTATE_ALL
     )
 
+    enums: dict = {
+        "ad_type": ["offer"],
+        "real_estate_type": real_estate_type,
+    }
+    # Explicitly request both pro and particulier (do not filter by ad_owner_type when "all")
+    if owner_type == "private":
+        enums["ad_owner_type"] = ["private"]
+    elif owner_type == "professional":
+        enums["ad_owner_type"] = ["professional"]
+    # else "all" -> no ad_owner_type filter, API returns both
+
     payload: dict = {
         "filters": {
             "category": {"id": category},
-            "enums": {
-                "ad_type": ["offer"],
-                "real_estate_type": real_estate_type,
-            }
+            "enums": enums,
         },
         "limit": min(limit, 100),
         "limit_alu": 0,
@@ -326,7 +340,16 @@ def normalize_ad(ad: dict, listing_type: str, city_label: str | None) -> dict | 
     terrain = parse_float(ter_str)
     
     body = ad.get("body") or ""
-    
+    # LBC may return owner type: "private" | "professional"
+    owner_type_val = ad.get("owner_type") or (ad.get("owner") or {}).get("type") or extract_attr(attrs, "ad_owner_type", True)
+    owner_type = None
+    if owner_type_val:
+        v = str(owner_type_val).lower()
+        if v in ("private", "particulier", "part"):
+            owner_type = "private"
+        elif v in ("professional", "pro", "professionnel"):
+            owner_type = "professional"
+
     return {
         "id": f"lbc_{ad_id}",
         "source": "leboncoin",
@@ -360,7 +383,8 @@ def normalize_ad(ad: dict, listing_type: str, city_label: str | None) -> dict | 
         "hasCellar": has_cellar,
         "hasGarage": has_garage,
         "terrain": terrain,
-        "nbPhotos": nb_photos
+        "nbPhotos": nb_photos,
+        "ownerType": owner_type
     }
 
 
@@ -374,6 +398,8 @@ def main():
     parser.add_argument("--max-price", type=int, default=None)
     parser.add_argument("--min-surface", type=int, default=None)
     parser.add_argument("--radius", type=int, default=10, help="Radius in km")
+    parser.add_argument("--owner-type", default="all", choices=["all", "private", "professional"],
+                        help="Filter by seller: all (default), private, professional")
     parser.add_argument("--output", default="data/properties.json", help="Ignored, kept for backward compat")
     parser.add_argument("--db", default="data/properties.db", help="Output SQLite DB file")
     parser.add_argument("--merge", action="store_true", help="Merge into existing DB (always true for SQLite)")
@@ -413,6 +439,7 @@ def main():
             max_price=args.max_price,
             min_surface=args.min_surface,
             radius_m=radius_m,
+            owner_type=args.owner_type,
         )
 
         result = scrape_page(session, payload)

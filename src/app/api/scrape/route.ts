@@ -17,6 +17,8 @@ interface ScrapeRequest {
     minSurface?: number;
     radiusKm?: number;
     limit?: number;
+    ownerType?: 'all' | 'private' | 'professional';
+    sources?: ('leboncoin' | 'seloger' | 'bienveo')[];  // default: ['leboncoin']
 }
 
 interface ScrapeResult {
@@ -49,6 +51,7 @@ async function scrapeLeBonCoin(params: ScrapeRequest): Promise<ScrapeResult> {
         '--limit', String(Math.min(params.limit ?? 100, 1000000)),
         '--db', DB_PATH.replace('.json', '.db'),
         '--merge',
+        '--owner-type', params.ownerType ?? 'all',
     ];
     if (params.minPrice) args.push('--min-price', String(params.minPrice));
     if (params.maxPrice) args.push('--max-price', String(params.maxPrice));
@@ -117,14 +120,23 @@ async function scrapeLeBonCoin(params: ScrapeRequest): Promise<ScrapeResult> {
 export async function POST(request: Request) {
     try {
         const params: ScrapeRequest = await request.json().catch(() => ({}));
+        const sources = params.sources?.length ? params.sources : ['leboncoin'];
+        const results: ScrapeResult[] = [];
+        let totalNew = 0;
 
-        const result = await scrapeLeBonCoin(params);
+        if (sources.includes('leboncoin')) {
+            const result = await scrapeLeBonCoin(params);
+            results.push(result);
+            totalNew += result.count ?? 0;
+        }
+        // SeLoger/Bienveo could be called here via subprocess or fetch to internal scripts if needed
+
         const totalCount = await getDBCount();
 
         return NextResponse.json({
-            success: result.count > 0,
-            results: [result],
-            newCount: result.count,
+            success: totalNew > 0,
+            results,
+            newCount: totalNew,
             totalCount,
         });
 

@@ -16,7 +16,21 @@ import lbc_scrape
 
 TARGET_TYPES = ["buy"]
 DB_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "properties.db")
-MAX_PER_DEPT = 500  # Pull up to 500 ads per department
+# L'API LBC limite à ~2500 résultats par recherche. On boucle par tranche de prix
+# pour dépasser cette limite et récupérer toutes les annonces par département.
+MAX_PER_SEARCH = 2500
+PAGE_SIZE = 100
+
+# Tranches de prix (€) pour couvrir tout le marché sans dépasser la limite API par requête.
+PRICE_RANGES = [
+    (0, 100_000),
+    (100_000, 200_000),
+    (200_000, 350_000),
+    (350_000, 500_000),
+    (500_000, 800_000),
+    (800_000, 1_500_000),
+    (1_500_000, 50_000_000),  # luxe / pas de max côté API
+]
 
 def fetch_geo_data():
     """Fetches all departments from the Geo API."""
@@ -49,55 +63,64 @@ def main() -> None:
 
     for listing_type in TARGET_TYPES:
         for dept in dept_codes:
-            print(f"\n>>> Scraping: DEPT {dept} ({listing_type.upper()})")
-            
-            impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
-            session = lbc_scrape.cf_requests.Session(impersonate=impersonate)
-            
-            dept_properties = []
-            offset = 0
-            page_size = 35
+            print(f"\n>>> DEPT {dept} ({listing_type.upper()}) — {len(PRICE_RANGES)} tranches de prix")
             dept_added = 0
             dept_dupes = 0
-            
-            while len(dept_properties) < MAX_PER_DEPT:
-                batch_size = min(page_size, MAX_PER_DEPT - len(dept_properties))
-                payload = lbc_scrape.build_payload(
-                    city_key=None,
-                    listing_type=listing_type,
-                    kind="both",
-                    limit=batch_size,
-                    offset=offset,
-                    department_code=dept
-                )
 
-                result = lbc_scrape.scrape_page(session, payload)
-                if "error" in result:
-                    print(f"    [!] Error (Dept {dept}): {result['error']}")
-                    break
+            impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
+            session = lbc_scrape.cf_requests.Session(impersonate=impersonate)
 
-                ads = result.get("ads") or []
-                if not ads:
-                    break
+            for price_min, price_max in PRICE_RANGES:
+                offset = 0
+                total_in_search = None
+                range_label = f"{price_min // 1000}k-{price_max // 1000}k€" if price_max < 50_000_000 else f">{price_min // 1_000_000}M€"
 
-                batch_props = []
-                for ad in ads:
-                    normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=f"Dép. {dept}")
-                    if normalized:
-                        batch_props.append(normalized)
+                while offset < MAX_PER_SEARCH:
+                    batch_size = min(PAGE_SIZE, MAX_PER_SEARCH - offset)
+                    payload = lbc_scrape.build_payload(
+                        city_key=None,
+                        listing_type=listing_type,
+                        kind="both",
+                        limit=batch_size,
+                        offset=offset,
+                        min_price=price_min,
+                        max_price=price_max,
+                        min_surface=None,
+                        department_code=dept,
+                        owner_type="all",
+                    )
 
-                if batch_props:
-                    added, dupes = lbc_scrape.save_to_db(conn, batch_props)
-                    dept_added += added
-                    dept_dupes += dupes
-                    dept_properties.extend(batch_props)
-                    print(f"    + Batch: {len(batch_props)} ads (Added: {added}, Dupes: {dupes})")
-                
-                offset += len(ads)
-                if len(ads) < batch_size:
-                    break
-                
-                time.sleep(random.uniform(1, 2))
+                    result = lbc_scrape.scrape_page(session, payload)
+                    if "error" in result:
+                        print(f"    [!] {range_label}: {result['error']}")
+                        break
+
+                    ads = result.get("ads") or []
+                    if not ads:
+                        break
+
+                    if total_in_search is None and "total" in result:
+                        total_in_search = result.get("total")
+
+                    batch_props = []
+                    for ad in ads:
+                        normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=f"Dép. {dept}")
+                        if normalized:
+                            batch_props.append(normalized)
+
+                    if batch_props:
+                        added, dupes = lbc_scrape.save_to_db(conn, batch_props)
+                        dept_added += added
+                        dept_dupes += dupes
+                        print(f"    {range_label} offset={offset}: +{len(batch_props)} (total dépt: {dept_added + dept_dupes})", file=sys.stderr)
+
+                    offset += len(ads)
+                    if len(ads) < batch_size:
+                        break
+                    if total_in_search is not None and offset >= total_in_search:
+                        break
+
+                    time.sleep(random.uniform(1, 2))
 
             total_added_global += dept_added
             total_dupes_global += dept_dupes

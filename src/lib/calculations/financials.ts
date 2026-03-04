@@ -151,8 +151,8 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     const totalProjectCost = data.price + notaryFees + data.works + data.furniture;
 
-    // 2. Revenues (Annual)
-    const vacancyMonths = data.vacancyMonth || 1;
+    // 2. Revenues (Annual) — 0 vacance = 12 mois de loyer, 1 mois vacance = 11 mois, etc.
+    const vacancyMonths = data.vacancyMonth ?? 1;
     const annualGrossRent = data.monthlyRent * (12 - vacancyMonths);
 
     // 3. Charges (Annual)

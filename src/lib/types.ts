@@ -104,6 +104,7 @@ export interface Property {
     hasGarage?: boolean;           // Garage
     terrain?: number;              // Surface terrain m² (maisons)
     nbPhotos?: number;             // Nb de photos dans l'annonce
+    ownerType?: 'private' | 'professional';  // Pro ou particulier (LBC)
 
     // Computed fields (for filtering)
     department?: string;           // e.g. '75'

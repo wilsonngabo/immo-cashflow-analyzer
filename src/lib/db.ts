@@ -46,13 +46,20 @@ export function getDB() {
                 hasCellar BOOLEAN,
                 hasGarage BOOLEAN,
                 terrain REAL,
-                nbPhotos INTEGER
-            )
+                nbPhotos INTEGER,
+                ownerType TEXT
+            );
             CREATE INDEX IF NOT EXISTS idx_listingType ON properties(listingType);
             CREATE INDEX IF NOT EXISTS idx_source ON properties(source);
             CREATE INDEX IF NOT EXISTS idx_postalCode ON properties(postalCode);
             CREATE INDEX IF NOT EXISTS idx_scrapedAt ON properties(scrapedAt);
+            CREATE INDEX IF NOT EXISTS idx_ownerType ON properties(ownerType);
         `);
+        try {
+            db.exec('ALTER TABLE properties ADD COLUMN ownerType TEXT');
+        } catch {
+            // Column already exists
+        }
     }
     return db;
 }

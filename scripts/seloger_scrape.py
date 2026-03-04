@@ -45,16 +45,16 @@ def save_to_db(conn, properties):
             listingType, url, imageUrl, description, scrapedAt, pricePerSqm,
             dpe, ges, charges, floor, hasElevator, hasBalcony, hasParking,
             builtYear, propertyTax, isNew, energyHeating, heatingType,
-            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos
+            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos, ownerType
         ) VALUES (
             :id, :source, :title, :price, :surface, :rooms, :city, :postalCode, :propertyKind,
             :listingType, :url, :imageUrl, :description, :scrapedAt, :pricePerSqm,
             :dpe, :ges, :charges, :floor, :hasElevator, :hasBalcony, :hasParking,
             :builtYear, :propertyTax, :isNew, :energyHeating, :heatingType,
-            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos
+            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos, :ownerType
         )
     '''
-    conn.executemany(query, properties)
+    conn.executemany(query, [dict(p, ownerType=p.get('ownerType')) for p in properties])
     conn.commit()
 
 # NOTE: Since SeLoger's API endpoints require complex handshake/tokens often changing,
@@ -186,7 +186,8 @@ def main():
                     "hasCellar": False,
                     "hasGarage": False,
                     "terrain": None,
-                    "nbPhotos": len(photos) if isinstance(photos, list) else 0
+                    "nbPhotos": len(photos) if isinstance(photos, list) else 0,
+                    "ownerType": None,
                 })
         else:
             print(json.dumps({"error": f"SeLoger API blocked or changed (HTTP {resp.status_code})"}), file=sys.stderr)
