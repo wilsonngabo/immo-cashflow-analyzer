@@ -61,7 +61,7 @@ export function ComparisonDashboard({ simulations, onLoad, onDelete }: Compariso
                                 {/* Verdict Description */}
                                 {verdict && (
                                     <div className="text-xs bg-slate-50 p-2 rounded text-slate-600 italic">
-                                        "{verdict.description}"
+                                        {verdict.description}
                                     </div>
                                 )}
 

@@ -130,7 +130,7 @@ function estimateTMI(annualGrossSalary: number): number {
 const CSG = 0.172;
 
 export function calculateAllFiscalModes(data: InvestmentData): Record<string, FinancialResults> {
-    const modes = ['LMNP_MICRO', 'LMNP_REEL', 'FONCIER_MICRO', 'SCI_IS'];
+    const modes = ['LMNP_MICRO', 'LMNP_REEL', 'FONCIER_MICRO', 'FONCIER_REEL', 'SCI_IS'];
     const results: Record<string, FinancialResults> = {};
 
     modes.forEach(mode => {
@@ -141,6 +141,7 @@ export function calculateAllFiscalModes(data: InvestmentData): Record<string, Fi
 }
 
 const ACTION_RATE = 1.0;
+
 
 export function calculateFinancials(data: InvestmentData, taxationMode: string): FinancialResults {
     // 1. Costs
@@ -156,13 +157,15 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     // 3. Charges (Annual)
     const annualCondoFees = data.condoFees * 12;
-    const annualManagementFees = (annualGrossRent * data.managementFees) / 100;
+    const annualManagementFees = (annualGrossRent * (data.managementFees || 0)) / 100;
+    const annualGLI = (annualGrossRent * (data.gliRate || 0)) / 100;
     const annualLoanInsurance = data.loanAmount * (data.insuranceRate / 100);
     const annualCharges =
-        data.propertyTax +
+        (data.propertyTax || 0) +
         annualCondoFees +
-        data.pnoInsurance +
+        (data.pnoInsurance || 0) +
         annualManagementFees +
+        annualGLI +
         annualLoanInsurance;
 
     // 4. Mortgage (Complex with PTZ/Action)
@@ -174,9 +177,6 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
         let ptzPart = 0;
         let actionPart = 0;
 
-        // Calculate Dynamic Amounts
-        // Use Total Project Cost as basis? Usually PTZ is on "Operation Cost" (Price + Works + Notary). 
-        // Yes, totalProjectCost is correct basis.
         if (data.includePTZ && data.revenueN2 !== undefined && data.householdSize) {
             const ptz = getPTZDetails(totalProjectCost, data.revenueN2, data.householdSize, data.zone || 'B1');
             if (ptz.eligible) ptzPart = Math.min(ptz.amount, mainLoanAmount);
@@ -187,26 +187,14 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
             if (action.eligible) actionPart = Math.min(action.amount, mainLoanAmount - ptzPart);
         }
 
-        // If user forced checkbox but no revenue/household data, simple fallback or 0? 
-        // Let's fallback to standard 30k/15k if specific data missing? 
-        // User requested "depend on revenue". So if missing, maybe 0.
-        // But let's be safe: If checked but no data, use old defaults?
-        // No, let's strictly require data for these calculation or assume max if they checked it manually?
-        // Let's assume max defaults if checks are forced without data.
         if (data.includePTZ && (!data.revenueN2 || !data.householdSize) && ptzPart === 0) ptzPart = Math.min(30000, mainLoanAmount);
         if (data.includeActionLogement && (!data.revenueN2 || !data.householdSize) && actionPart === 0) actionPart = Math.min(30000, mainLoanAmount - ptzPart);
 
-
         const mainPart = Math.max(0, mainLoanAmount - ptzPart - actionPart);
-
-        // Calculate payments for each
         const mainPayment = calculateMonthlyMortgage(mainPart, data.interestRate, data.loanDuration);
-        const ptzPayment = calculateMonthlyMortgage(ptzPart, 0, data.loanDuration); // PTZ simplified linear
+        const ptzPayment = calculateMonthlyMortgage(ptzPart, 0, data.loanDuration);
         const actionPayment = calculateMonthlyMortgage(actionPart, ACTION_RATE, data.loanDuration);
-
         monthlyMortgage = mainPayment + ptzPayment + actionPayment;
-
-        // Store computed parts for results if needed? (Not in interface yet, but useful for debug)
     } else {
         monthlyMortgage = calculateMonthlyMortgage(data.loanAmount, data.interestRate, data.loanDuration);
     }
@@ -219,32 +207,22 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     // 6. Tax Calculation
     let estimateTax = 0;
-
-    // Dynamic TMI based on Salary
-    // Note: estimateTMI needs to be available in this scope or imported. It is consistent above.
     const TMI = estimateTMI(data.annualSalary || 0);
 
-    // Mortgage interest estimation (First year approx for tax)
-    // Needs adjustment for multi-loan? Keep roughly proportional to main rate for simplicity or weighted?
-    // Weighted interest:
+    // Weighted mortgage interest for first year
     let weightedInterest = 0;
     if (data.propertyType === 'HLM' && (data.includePTZ || data.includeActionLogement)) {
-        // Recalculate parts for interest (same logic as above)
         let ptzPart = 0;
         let actionPart = 0;
-
         if (data.includePTZ && data.revenueN2 && data.householdSize) {
             const ptz = getPTZDetails(totalProjectCost, data.revenueN2, data.householdSize);
             if (ptz.eligible) ptzPart = Math.min(ptz.amount, data.loanAmount);
         } else if (data.includePTZ) { ptzPart = Math.min(30000, data.loanAmount); }
-
         if (data.includeActionLogement && data.revenueN2 && data.householdSize) {
             const action = getActionLogementDetails(totalProjectCost, data.revenueN2, data.householdSize);
             if (action.eligible) actionPart = Math.min(action.amount, data.loanAmount - ptzPart);
         } else if (data.includeActionLogement) { actionPart = Math.min(30000, data.loanAmount - ptzPart); }
-
         const mainPart = Math.max(0, data.loanAmount - ptzPart - actionPart);
-
         weightedInterest = (mainPart * (data.interestRate / 100)) + (actionPart * (ACTION_RATE / 100));
     } else {
         weightedInterest = data.loanAmount * (data.interestRate / 100);
@@ -254,53 +232,44 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     switch (taxationMode) {
         case 'LMNP_MICRO':
-            // Abattement 50%
             estimateTax = (annualGrossRent * 0.5) * (TMI + CSG);
             break;
 
-        case 'LMNP_REEL':
-            // Recettes - Charges Deductibles - Amortissement
-            // Charges deductibles: Taxe Foncier + Copro + Assurance + Interets + Gestion
-            const deductibleCharges = data.propertyTax + annualCondoFees + data.pnoInsurance + annualManagementFees + annualLoanInsurance + annualInterest;
-
-            // Simplified Amortization:
-            // Immobilier (90% of price) / 30 years
-            // Furniture / 10 years
-            // Works / 15 years
-            // Notary fees (can be amortized or deducted, let's deduct)
+        case 'LMNP_REEL': {
+            const deductibleCharges = (data.propertyTax || 0) + annualCondoFees + (data.pnoInsurance || 0) + annualManagementFees + annualGLI + annualLoanInsurance + annualInterest;
             const amortConstruction = (data.price * 0.9) / 30;
-            const amortFurniture = (data.furniture) / 10;
-            const amortWorks = (data.works) / 15;
+            const amortFurniture = data.furniture / 10;
+            const amortWorks = data.works / 15;
             const totalAmort = amortConstruction + amortFurniture + amortWorks;
-
             const taxableResult = Math.max(0, annualGrossRent - deductibleCharges - totalAmort - notaryFees);
             estimateTax = taxableResult * (TMI + CSG);
             break;
+        }
 
         case 'FONCIER_MICRO':
-            // Nu Propriété: Abattement 30%
-            if (annualGrossRent > 15000) {
-                // Force Reel if > 15k, but here strict micro logic
-                estimateTax = (annualGrossRent * 0.7) * (TMI + CSG);
-            } else {
-                estimateTax = (annualGrossRent * 0.7) * (TMI + CSG);
-            }
+            estimateTax = (annualGrossRent * 0.7) * (TMI + CSG);
             break;
 
-        case 'SCI_IS':
-            // 15% up to 38120€, 25% beyond. No CSG.
-            // Deduct everything + amort.
-            // Amortization (Building only, usually)
-            const sciAmort = (data.price * 0.9) / 30; // Simplying
-            const sciDeductibles = annualCharges + annualInterest; // + Notary amort?
-            const sciResult = Math.max(0, annualGrossRent - sciDeductibles - sciAmort);
+        case 'FONCIER_REEL': {
+            // Nu propriété réel: Loyer - (Taxe foncière + Copro + PNO + Intérêts + Gestion + GLI)
+            // No amortissement allowed in foncier réel (only in LMNP)
+            const foncierDeductibles = (data.propertyTax || 0) + annualCondoFees + (data.pnoInsurance || 0) + annualManagementFees + annualGLI + annualInterest;
+            const foncierTaxable = Math.max(0, annualGrossRent - foncierDeductibles);
+            estimateTax = foncierTaxable * (TMI + CSG);
+            break;
+        }
 
+        case 'SCI_IS': {
+            const sciAmort = (data.price * 0.9) / 30;
+            const sciDeductibles = annualCharges + annualInterest;
+            const sciResult = Math.max(0, annualGrossRent - sciDeductibles - sciAmort);
             if (sciResult < 38120) {
                 estimateTax = sciResult * 0.15;
             } else {
                 estimateTax = (38120 * 0.15) + ((sciResult - 38120) * 0.25);
             }
             break;
+        }
 
         default:
             estimateTax = 0;
@@ -308,17 +277,12 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     const annualCashFlowNetNet = annualCashFlowNet - estimateTax;
 
-    // 7. Calculate Debt Ratio / Cashflow Analysis with Salary
-    // Debt Ratio = (Mortgage + Other Loans??) / (Monthly SalaryNet + 70% Rent)
-    // Assuming 'annualSalary' is Gross. Net ~ 77% Gross? Let's use 0.75 for safety. Or just use Gross if stated "Brut".
-    // Banks often use Net Before Tax. 0.78 factor approx.
+    // 7. Debt Ratio
     const monthlyNetSalary = (data.annualSalary * 0.78) / 12;
     let debtRatio = 0;
     if (monthlyNetSalary > 0) {
-        const revenues = monthlyNetSalary + (data.monthlyRent * 0.7); // 70% differential method or classic
-        if (revenues > 0) {
-            debtRatio = (monthlyMortgage / revenues) * 100;
-        }
+        const revenues = monthlyNetSalary + (data.monthlyRent * 0.7);
+        if (revenues > 0) debtRatio = (monthlyMortgage / revenues) * 100;
     }
 
     return {
@@ -327,12 +291,14 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
         monthlyCashFlowBrut: annualCashFlowBrut / 12,
         monthlyCashFlowNet: annualCashFlowNet / 12,
         monthlyCashFlowNetNet: annualCashFlowNetNet / 12,
-        yieldBrut: (annualGrossRent / totalProjectCost) * 100,
-        yieldNet: ((annualGrossRent - annualCharges) / totalProjectCost) * 100,
+        yieldBrut: totalProjectCost > 0 ? (annualGrossRent / totalProjectCost) * 100 : 0,
+        yieldNet: totalProjectCost > 0 ? (annualCashFlowNet / totalProjectCost) * 100 : 0,
         taxes: estimateTax,
-        debtRatio // NEW
+        debtRatio,
     };
 }
+
+
 
 export interface AmortizationPoint {
     year: number;

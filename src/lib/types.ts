@@ -27,6 +27,7 @@ export interface InvestmentData {
     pnoInsurance: number; // Assurance PNO (Annual)
     managementFees: number; // % of rent
     vacancyMonth: number; // Number of months vacancy/year (default 1)
+    gliRate: number; // % of rent for GLI insurance (default 0)
 
     // New Fields
     annualSalary: number;
@@ -58,5 +59,55 @@ export interface FinancialResults {
     yieldBrut: number;
     yieldNet: number; // Net de charges
     taxes: number; // Annual estimated tax
-    debtRatio?: number; // Taux d'endettement
+    debtRatio: number; // Taux d'endettement en %
+}
+
+// ─── Property Database ────────────────────────────────────────────────────────
+
+export type PropertyListingType = 'buy' | 'rent';
+export type PropertySource = 'leboncoin' | 'seloger';
+export type PropertyKind = 'apartment' | 'house' | 'other';
+
+export interface Property {
+    id: string;                    // e.g. 'lbc_123456' or 'sl_789012'
+    source: PropertySource;
+    title: string;
+    price: number;
+    surface?: number;              // m²
+    rooms?: number;
+    city?: string;
+    postalCode?: string;
+    propertyKind?: PropertyKind;
+    listingType: PropertyListingType;
+    url: string;
+    imageUrl?: string;
+    description?: string;
+    scrapedAt: string;             // ISO timestamp
+    pricePerSqm?: number;         // computed: price / surface
+
+    // Extended fields (Rich data)
+    dpe?: string;                  // e.g. 'A', 'B', 'C'
+    ges?: string;                  // e.g. 'A', 'B', 'C'
+    charges?: number;              // Monthly HOA charges
+    propertyTax?: number;          // Taxe foncière (if available)
+    floor?: number;                // Etage
+    hasElevator?: boolean;         // Ascenseur
+    hasBalcony?: boolean;          // Balcon / Terrasse
+    hasParking?: boolean;          // Parking / Garage
+    builtYear?: number;            // Année de construction
+    isNew?: boolean;               // Neuf ou Ancien
+    energyHeating?: string;        // ex: 'Électrique', 'Gaz'
+    heatingType?: string;          // ex: 'Individuel', 'Collectif'
+    bedrooms?: number;             // Nombre de chambres
+    isFurnished?: boolean;         // Meublé
+    hasCellar?: boolean;           // Cave
+    hasGarage?: boolean;           // Garage
+    terrain?: number;              // Surface terrain m² (maisons)
+    nbPhotos?: number;             // Nb de photos dans l'annonce
+
+    // Computed fields (for filtering)
+    department?: string;           // e.g. '75'
+    region?: string;               // e.g. 'Île-de-France'
+    estimatedYield?: number;       // Rentabilité brute estimée (%)
+    estimatedCashflow?: number;    // Cashflow net estimé (€/mois)
 }

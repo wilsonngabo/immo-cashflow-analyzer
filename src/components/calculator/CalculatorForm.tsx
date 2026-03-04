@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,9 +26,13 @@ interface CalculatorFormProps {
 }
 
 export function CalculatorForm({ data, mode, onDataChange, onModeChange }: CalculatorFormProps) {
-    const handleChange = (field: keyof InvestmentData, val: string | number | boolean) => {
+    const [isOpenAcq, setIsOpenAcq] = useState(true);
+    const [isOpenFin, setIsOpenFin] = useState(true);
+    const [isOpenExp, setIsOpenExp] = useState(true);
+
+    const handleChange = useCallback((field: keyof InvestmentData, val: string | number | boolean) => {
         onDataChange({ ...data, [field]: val });
-    };
+    }, [data, onDataChange]);
 
     // Auto-calculate Notary Fees & Loan Amount
     useEffect(() => {
@@ -140,94 +145,297 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
         <div className="space-y-6">
 
             {/* Acquisition */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Prix d'achat (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.price ?? ''}
-                        onChange={(e) => handleChange('price', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Surface (m²)</Label>
-                    <Input
-                        type="number"
-                        value={data.surface ?? ''}
-                        onChange={(e) => handleChange('surface', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
+            <div
+                className="flex items-center justify-between cursor-pointer group"
+                onClick={() => setIsOpenAcq(!isOpenAcq)}
+            >
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider group-hover:text-slate-800 transition-colors">Acquisition</h3>
+                {isOpenAcq ? <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />}
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Travaux (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.works ?? ''}
-                        onChange={(e) => handleChange('works', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Meubles (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.furniture ?? ''}
-                        onChange={(e) => handleChange('furniture', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <Label htmlFor="notary">Frais de Notaire (€)</Label>
-                <div className="relative">
-                    <Input
-                        id="notary"
-                        type="number"
-                        value={data.notaryFees || 0} // Allow 0
-                        onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            onDataChange({
-                                ...data,
-                                notaryFees: isNaN(val) ? 0 : val,
-                                manualNotaryFees: true
-                            });
-                        }}
-                        className={data.manualNotaryFees ? "border-yellow-400 bg-yellow-50" : ""}
-                    />
-                </div>
-                {data.manualNotaryFees && (
-                    <p className="text-[10px] text-yellow-600 mt-1 cursor-pointer hover:underline" onClick={() => onDataChange({ ...data, manualNotaryFees: false })}>
-                        Rétablir calcul auto
-                    </p>
-                )}
-            </div>
-
-            {data.propertyType === 'HLM' && (
-                <div className="col-span-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <Switch
-                                id="reduced-fees"
-                                checked={data.reducedNotaryFees}
-                                onCheckedChange={(checked) => onDataChange({ ...data, reducedNotaryFees: checked, manualNotaryFees: false })}
+            {isOpenAcq && (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Prix d'achat (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.price ?? ''}
+                                onChange={(e) => handleChange('price', parseFloat(e.target.value) || 0)}
                             />
-                            <Label htmlFor="reduced-fees" className="text-xs">Frais de notaire réduits (3%)</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Label className="text-xs font-semibold">Zone :</Label>
-                            <Select
-                                value={data.zone || 'B1'}
-                                onValueChange={(val: any) => onDataChange({ ...data, zone: val })}
+                        <div className="space-y-2">
+                            <Label>Surface (m²)</Label>
+                            <Input
+                                type="number"
+                                value={data.surface ?? ''}
+                                onChange={(e) => handleChange('surface', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Travaux (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.works ?? ''}
+                                onChange={(e) => handleChange('works', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Meubles (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.furniture ?? ''}
+                                onChange={(e) => handleChange('furniture', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="notary">Frais de Notaire (€)</Label>
+                        <div className="relative">
+                            <Input
+                                id="notary"
+                                type="number"
+                                value={data.notaryFees || 0} // Allow 0
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    onDataChange({
+                                        ...data,
+                                        notaryFees: isNaN(val) ? 0 : val,
+                                        manualNotaryFees: true
+                                    });
+                                }}
+                                className={data.manualNotaryFees ? "border-yellow-400 bg-yellow-50" : ""}
+                            />
+                        </div>
+                        {data.manualNotaryFees && (
+                            <p className="text-[10px] text-yellow-600 mt-1 cursor-pointer hover:underline" onClick={() => onDataChange({ ...data, manualNotaryFees: false })}>
+                                Rétablir calcul auto
+                            </p>
+                        )}
+                    </div>
+
+                    {data.propertyType === 'HLM' && (
+                        <div className="col-span-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <Switch
+                                        id="reduced-fees"
+                                        checked={data.reducedNotaryFees}
+                                        onCheckedChange={(checked) => onDataChange({ ...data, reducedNotaryFees: checked, manualNotaryFees: false })}
+                                    />
+                                    <Label htmlFor="reduced-fees" className="text-xs">Frais de notaire réduits (3%)</Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs font-semibold">Zone :</Label>
+                                    <Select
+                                        value={data.zone || 'B1'}
+                                        onValueChange={(val: any) => onDataChange({ ...data, zone: val })}
+                                    >
+                                        <SelectTrigger className="h-7 text-xs w-[70px]">
+                                            <SelectValue placeholder="Zone" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="A">A</SelectItem>
+                                            <SelectItem value="B1">B1</SelectItem>
+                                            <SelectItem value="B2">B2</SelectItem>
+                                            <SelectItem value="C">C</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-2 pt-2">
+                        <Label>Type de Bien (Notaire)</Label>
+                        <Select
+                            value={data.propertyType}
+                            onValueChange={(val: any) => handleChange('propertyType', val)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner le type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="OLD">Ancien (8%)</SelectItem>
+                                <SelectItem value="NEW">Neuf (2.5%)</SelectItem>
+                                <SelectItem value="HLM">Vente HLM (3%)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>)}
+
+            <Separator />
+
+            {/* Financement */}
+            <div
+                className="flex items-center justify-between cursor-pointer group"
+                onClick={() => setIsOpenFin(!isOpenFin)}
+            >
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider group-hover:text-slate-800 transition-colors">Financement</h3>
+                {isOpenFin ? <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />}
+            </div>
+            {isOpenFin && (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="salary">Salaire Brut Annuel</Label>
+                            <div className="relative">
+                                <Input
+                                    id="salary"
+                                    type="number"
+                                    value={data.annualSalary ?? ''}
+                                    onChange={(e) => handleChange('annualSalary', parseFloat(e.target.value) || 0)}
+                                    className="pl-8"
+                                    placeholder="ex: 40000"
+                                />
+                                <span className="absolute left-3 top-2.5 text-slate-500">€</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="apport">Apport Personnel</Label>
+                            <div className="relative">
+                                <Input
+                                    id="apport"
+                                    type="number"
+                                    value={data.personalContribution ?? ''}
+                                    onChange={(e) => handleChange('personalContribution', parseFloat(e.target.value) || 0)}
+                                    className="pl-8"
+                                    placeholder="ex: 15000"
+                                />
+                                <span className="absolute left-3 top-2.5 text-slate-500">€</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {data.propertyType === 'HLM' && (
+                        <div className="col-span-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <Label className="text-xs">Revenu Fiscal N-2</Label>
+                                    <Input
+                                        type="number"
+                                        className="h-8 text-xs bg-white"
+                                        placeholder="ex: 28000"
+                                        value={data.revenueN2 ?? ''}
+                                        onChange={(e) => handleChange('revenueN2', parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div>
+                                    <Label className="text-xs">Personnes Fiscales</Label>
+                                    <Input
+                                        type="number"
+                                        className="h-8 text-xs bg-white"
+                                        placeholder="ex: 1"
+                                        value={data.householdSize ?? ''}
+                                        onChange={(e) => handleChange('householdSize', parseFloat(e.target.value) || 1)}
+                                    />
+                                </div>
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCheckEligibility}
+                                className="w-full text-blue-700 border-blue-200 hover:bg-blue-100 h-8 text-xs"
                             >
-                                <SelectTrigger className="h-7 text-xs w-[70px]">
-                                    <SelectValue placeholder="Zone" />
+                                Vérifier Éligibilité Aides & Remplir
+                            </Button>
+
+                            <div className="flex gap-4 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="ptz"
+                                        checked={data.includePTZ}
+                                        onChange={(e) => handleChange('includePTZ', e.target.checked)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <Label htmlFor="ptz" className="text-xs cursor-pointer">
+                                        PTZ {aidDetails.ptz?.eligible ? `(${ptzAmount.toLocaleString()} €)` : ''}
+                                    </Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="action"
+                                        checked={data.includeActionLogement}
+                                        onChange={(e) => handleChange('includeActionLogement', e.target.checked)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <Label htmlFor="action" className="text-xs cursor-pointer">
+                                        Action Logement {aidDetails.action?.eligible ? `(${actionAmount.toLocaleString()} €)` : ''}
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="flex justify-between">
+                                <span>Montant Crédit Total (€)</span>
+                                <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500 font-normal">Calculé</span>
+                            </Label>
+                            <Input
+                                type="number"
+                                value={Math.round(data.loanAmount)}
+                                readOnly
+                                className="bg-slate-50 text-slate-500 font-semibold"
+                            />
+                            {(data.includePTZ || data.includeActionLogement) && (
+                                <div className="text-[10px] text-slate-500 space-y-0.5">
+                                    <div className="flex justify-between">
+                                        <span>Prêt Bancaire:</span>
+                                        <span>{Math.round(mainLoan).toLocaleString()} €</span>
+                                    </div>
+                                    {data.includePTZ && (
+                                        <div className="flex justify-between text-blue-600">
+                                            <span>Dont PTZ:</span>
+                                            <span>{ptzAmount.toLocaleString()} €</span>
+                                        </div>
+                                    )}
+                                    {data.includeActionLogement && (
+                                        <div className="flex justify-between text-blue-600">
+                                            <span>Dont Action Log.:</span>
+                                            <span>{actionAmount.toLocaleString()} €</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="flex justify-between">
+                                <span>Taux Assurance (%)</span>
+                                <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500 font-normal">Annuel/Capital</span>
+                            </Label>
+                            <Input
+                                type="number"
+                                step="0.01"
+                                value={data.insuranceRate}
+                                onChange={(e) => handleChange('insuranceRate', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Durée (Années)</Label>
+                            <Select
+                                value={String(data.loanDuration)}
+                                onValueChange={(val) => handleChange('loanDuration', parseInt(val))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Durée" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="A">A</SelectItem>
-                                    <SelectItem value="B1">B1</SelectItem>
-                                    <SelectItem value="B2">B2</SelectItem>
-                                    <SelectItem value="C">C</SelectItem>
+                                <SelectContent className="max-h-[200px]">
+                                    {Array.from({ length: 30 }, (_, i) => i + 1).map((year) => (
+                                        <SelectItem key={year} value={String(year)}>
+                                            {year} ans
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -235,291 +443,171 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                 </div>
             )}
 
-            <div className="space-y-2 pt-2">
-                <Label>Type de Bien (Notaire)</Label>
-                <Select
-                    value={data.propertyType}
-                    onValueChange={(val: any) => handleChange('propertyType', val)}
-                >
-                    <SelectTrigger>
-                        <SelectValue placeholder="Sélectionner le type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="OLD">Ancien (8%)</SelectItem>
-                        <SelectItem value="NEW">Neuf (2.5%)</SelectItem>
-                        <SelectItem value="HLM">Vente HLM (3%)</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-
-            <Separator />
-
-            {/* Financement */}
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Financement</h3>
-            <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="salary">Salaire Brut Annuel</Label>
-                        <div className="relative">
-                            <Input
-                                id="salary"
-                                type="number"
-                                value={data.annualSalary ?? ''}
-                                onChange={(e) => handleChange('annualSalary', parseFloat(e.target.value) || 0)}
-                                className="pl-8"
-                                placeholder="ex: 40000"
-                            />
-                            <span className="absolute left-3 top-2.5 text-slate-500">€</span>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="apport">Apport Personnel</Label>
-                        <div className="relative">
-                            <Input
-                                id="apport"
-                                type="number"
-                                value={data.personalContribution ?? ''}
-                                onChange={(e) => handleChange('personalContribution', parseFloat(e.target.value) || 0)}
-                                className="pl-8"
-                                placeholder="ex: 15000"
-                            />
-                            <span className="absolute left-3 top-2.5 text-slate-500">€</span>
-                        </div>
-                    </div>
-                </div>
-
-                {data.propertyType === 'HLM' && (
-                    <div className="col-span-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                            <div>
-                                <Label className="text-xs">Revenu Fiscal N-2</Label>
-                                <Input
-                                    type="number"
-                                    className="h-8 text-xs bg-white"
-                                    placeholder="ex: 28000"
-                                    value={data.revenueN2 ?? ''}
-                                    onChange={(e) => handleChange('revenueN2', parseFloat(e.target.value) || 0)}
-                                />
-                            </div>
-                            <div>
-                                <Label className="text-xs">Personnes Fiscales</Label>
-                                <Input
-                                    type="number"
-                                    className="h-8 text-xs bg-white"
-                                    placeholder="ex: 1"
-                                    value={data.householdSize ?? ''}
-                                    onChange={(e) => handleChange('householdSize', parseFloat(e.target.value) || 1)}
-                                />
-                            </div>
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleCheckEligibility}
-                            className="w-full text-blue-700 border-blue-200 hover:bg-blue-100 h-8 text-xs"
-                        >
-                            Vérifier Éligibilité Aides & Remplir
-                        </Button>
-
-                        <div className="flex gap-4 pt-2">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="ptz"
-                                    checked={data.includePTZ}
-                                    onChange={(e) => handleChange('includePTZ', e.target.checked)}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <Label htmlFor="ptz" className="text-xs cursor-pointer">
-                                    PTZ {aidDetails.ptz?.eligible ? `(${ptzAmount.toLocaleString()} €)` : ''}
-                                </Label>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="action"
-                                    checked={data.includeActionLogement}
-                                    onChange={(e) => handleChange('includeActionLogement', e.target.checked)}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <Label htmlFor="action" className="text-xs cursor-pointer">
-                                    Action Logement {aidDetails.action?.eligible ? `(${actionAmount.toLocaleString()} €)` : ''}
-                                </Label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label className="flex justify-between">
-                            <span>Montant Crédit Total (€)</span>
-                            <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500 font-normal">Calculé</span>
-                        </Label>
-                        <Input
-                            type="number"
-                            value={Math.round(data.loanAmount)}
-                            readOnly
-                            className="bg-slate-50 text-slate-500 font-semibold"
-                        />
-                        {(data.includePTZ || data.includeActionLogement) && (
-                            <div className="text-[10px] text-slate-500 space-y-0.5">
-                                <div className="flex justify-between">
-                                    <span>Prêt Bancaire:</span>
-                                    <span>{Math.round(mainLoan).toLocaleString()} €</span>
-                                </div>
-                                {data.includePTZ && (
-                                    <div className="flex justify-between text-blue-600">
-                                        <span>Dont PTZ:</span>
-                                        <span>{ptzAmount.toLocaleString()} €</span>
-                                    </div>
-                                )}
-                                {data.includeActionLogement && (
-                                    <div className="flex justify-between text-blue-600">
-                                        <span>Dont Action Log.:</span>
-                                        <span>{actionAmount.toLocaleString()} €</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label className="flex justify-between">
-                            <span>Taux (%)</span>
-                            <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500 font-normal">Moyen</span>
-                        </Label>
-                        <Input
-                            type="number"
-                            step="0.1"
-                            value={data.interestRate}
-                            readOnly
-                            className="bg-slate-50 text-slate-500"
-                            onChange={(e) => handleChange('interestRate', parseFloat(e.target.value) || 0)}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Durée (Années)</Label>
-                        <Select
-                            value={String(data.loanDuration)}
-                            onValueChange={(val) => handleChange('loanDuration', parseInt(val))}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Durée" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-[200px]">
-                                {Array.from({ length: 30 }, (_, i) => i + 1).map((year) => (
-                                    <SelectItem key={year} value={String(year)}>
-                                        {year} ans
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
-
             <Separator />
 
             {/* Charges & Loyer */}
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Exploitation</h3>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Loyer Mensuel CC (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.monthlyRent ?? ''}
-                        onChange={(e) => handleChange('monthlyRent', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Taxe Foncière /an (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.propertyTax ?? ''}
-                        onChange={(e) => handleChange('propertyTax', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Charges Copro /mois (€)</Label>
-                    <Input
-                        type="number"
-                        value={data.condoFees ?? ''}
-                        onChange={(e) => handleChange('condoFees', parseFloat(e.target.value) || 0)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Mode de Chauffage</Label>
-                    <Select
-                        value={data.heatingType || 'INDIVIDUAL'}
-                        onValueChange={(val: any) => handleChange('heatingType', val)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="INDIVIDUAL">Individuel (Elec/Gaz)</SelectItem>
-                            <SelectItem value="COLLECTIVE">Collectif (Inclus Charges)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
+            <div
+                className="flex items-center justify-between cursor-pointer group"
+                onClick={() => setIsOpenExp(!isOpenExp)}
+            >
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider group-hover:text-slate-800 transition-colors">Exploitation</h3>
+                {isOpenExp ? <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />}
             </div>
+            {isOpenExp && (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Loyer Mensuel CC (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.monthlyRent ?? ''}
+                                onChange={(e) => handleChange('monthlyRent', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Taxe Foncière /an (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.propertyTax ?? ''}
+                                onChange={(e) => handleChange('propertyTax', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Charges Copro /mois (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.condoFees ?? ''}
+                                onChange={(e) => handleChange('condoFees', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Mode de Chauffage</Label>
+                            <Select
+                                value={data.heatingType || 'INDIVIDUAL'}
+                                onValueChange={(val: any) => handleChange('heatingType', val)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="INDIVIDUAL">Individuel (Elec/Gaz)</SelectItem>
+                                    <SelectItem value="COLLECTIVE">Collectif (Inclus Charges)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
 
-            <Separator />
-
-            {/* Récapitulatif Complet */}
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Récapitulatif Mensuel (Estimé)</h3>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm space-y-2">
-                {(() => {
-                    const energy = Math.round(data.surface * (data.heatingType === 'COLLECTIVE' ? 1.0 : 2.5));
-                    const internet = 30;
-                    const pno = 15;
-                    const propertyTaxMonthly = Math.round((data.propertyTax || 0) / 12);
-                    const totalLoan = Math.round(data.loanAmount > 0 ? (mainLoan * (data.interestRate / 100 / 12) / (1 - Math.pow(1 + data.interestRate / 100 / 12, -data.loanDuration * 12))) + (data.includePTZ ? ptzAmount / (20 * 12) : 0) + (data.includeActionLogement ? actionAmount / (20 * 12) : 0) : 0); // Quick approx for display, or use calculatedFinancials if available?
-                    // Actually, we should rely on the MAIN calculated monthly payment from `calculateFinancials` but we are inside the form.
-                    // Let's compute a quick "Simulate Payment" here or grab it from a helper if possible.
-                    // For now, let's use a rough Estimate sum or just display the components we know.
-                    // Wait, we need the ACTUAL monthly payment from the main loan.
-                    // We can re-call calculateMonthlyPayment(mainLoan, interestRate, duration).
-
-                    // Re-calculate Main Loan Payment for display
-                    const r = data.interestRate / 100 / 12;
-                    const n = data.loanDuration * 12;
-                    const mainPayment = mainLoan > 0 ? (r === 0 ? mainLoan / n : (mainLoan * r) / (1 - Math.pow(1 + r, -n))) : 0;
-
-                    // Approximations for PTZ/Action (often deferred, but let's smooth over 20y for "Charge" view or 15y? Standard PTZ is often 20-25y. Let's assume 20y smooth for cashflow impact view).
-                    const ptzPayment = data.includePTZ ? ptzAmount / (20 * 12) : 0;
-                    const actionPayment = data.includeActionLogement ? actionAmount / (20 * 12) : 0;
-
-                    const totalMonthly = mainPayment + ptzPayment + actionPayment + (data.condoFees || 0) + propertyTaxMonthly + energy + internet + pno;
-
-                    return (
-                        <>
-                            <div className="flex justify-between font-semibold border-b pb-2 mb-2">
-                                <span>Total Sorties Cash</span>
-                                <span>~{Math.round(totalMonthly).toLocaleString()} €/mois</span>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Assurance PNO /an (€)</Label>
+                            <Input
+                                type="number"
+                                value={data.pnoInsurance ?? ''}
+                                onChange={(e) => handleChange('pnoInsurance', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Vacance Locative (mois/an)</Label>
+                            <Select
+                                value={String(data.vacancyMonth ?? 1)}
+                                onValueChange={(val) => handleChange('vacancyMonth', parseInt(val))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[0, 1, 2, 3].map(m => (
+                                        <SelectItem key={m} value={String(m)}>{m} mois</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Frais de Gestion (% loyer)</Label>
+                            <div className="relative">
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    value={data.managementFees ?? ''}
+                                    onChange={(e) => handleChange('managementFees', parseFloat(e.target.value) || 0)}
+                                    className="pr-6"
+                                    placeholder="ex: 8"
+                                />
+                                <span className="absolute right-3 top-2.5 text-slate-400 text-sm">%</span>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-slate-600">
-                                <div className="flex justify-between"><span>Prêt Bancaire</span><span>{Math.round(mainPayment)} €</span></div>
-                                {data.includePTZ && <div className="flex justify-between text-blue-600"><span>PTZ (Lissé 20 ans)</span><span>{Math.round(ptzPayment)} €</span></div>}
-                                {data.includeActionLogement && <div className="flex justify-between text-blue-600"><span>Action Logement (Lissé)</span><span>{Math.round(actionPayment)} €</span></div>}
-                                <div className="flex justify-between"><span>Charges Copro</span><span>{data.condoFees || 0} €</span></div>
-                                <div className="flex justify-between"><span>Taxe Foncière (mensualisée)</span><span>{propertyTaxMonthly} €</span></div>
-                                <div className="flex justify-between text-slate-500">
-                                    <span>Énergie (Estim. {data.heatingType === 'COLLECTIVE' ? 'Coll.' : 'Indiv.'})</span>
-                                    <span>~{energy} €</span>
-                                </div>
-                                <div className="flex justify-between text-slate-500"><span>Internet</span><span>~{internet} €</span></div>
-                                <div className="flex justify-between text-slate-500"><span>Assurance PNO</span><span>~{pno} €</span></div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="flex gap-1 items-center">GLI (% loyer)
+                                <span className="text-[9px] text-slate-400 font-normal">(Garantie Loyers Impayés)</span>
+                            </Label>
+                            <div className="relative">
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    value={data.gliRate ?? ''}
+                                    onChange={(e) => handleChange('gliRate', parseFloat(e.target.value) || 0)}
+                                    className="pr-6"
+                                    placeholder="ex: 3.5"
+                                />
+                                <span className="absolute right-3 top-2.5 text-slate-400 text-sm">%</span>
                             </div>
-                        </>
-                    );
-                })()}
-            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Récapitulatif Complet */}
+                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Récapitulatif Mensuel (Estimé)</h3>
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm space-y-2">
+                        {(() => {
+                            const energy = Math.round(data.surface * (data.heatingType === 'COLLECTIVE' ? 1.0 : 2.5));
+                            const internet = 30;
+                            const pno = 15;
+                            const propertyTaxMonthly = Math.round((data.propertyTax || 0) / 12);
+                            const totalLoan = Math.round(data.loanAmount > 0 ? (mainLoan * (data.interestRate / 100 / 12) / (1 - Math.pow(1 + data.interestRate / 100 / 12, -data.loanDuration * 12))) + (data.includePTZ ? ptzAmount / (20 * 12) : 0) + (data.includeActionLogement ? actionAmount / (20 * 12) : 0) : 0); // Quick approx for display, or use calculatedFinancials if available?
+                            // Actually, we should rely on the MAIN calculated monthly payment from `calculateFinancials` but we are inside the form.
+                            // Let's compute a quick "Simulate Payment" here or grab it from a helper if possible.
+                            // For now, let's use a rough Estimate sum or just display the components we know.
+                            // Wait, we need the ACTUAL monthly payment from the main loan.
+                            // We can re-call calculateMonthlyPayment(mainLoan, interestRate, duration).
+
+                            // Re-calculate Main Loan Payment for display
+                            const r = data.interestRate / 100 / 12;
+                            const n = data.loanDuration * 12;
+                            const mainPayment = mainLoan > 0 ? (r === 0 ? mainLoan / n : (mainLoan * r) / (1 - Math.pow(1 + r, -n))) : 0;
+
+                            // Approximations for PTZ/Action (often deferred, but let's smooth over 20y for "Charge" view or 15y? Standard PTZ is often 20-25y. Let's assume 20y smooth for cashflow impact view).
+                            const ptzPayment = data.includePTZ ? ptzAmount / (20 * 12) : 0;
+                            const actionPayment = data.includeActionLogement ? actionAmount / (20 * 12) : 0;
+
+                            const totalMonthly = mainPayment + ptzPayment + actionPayment + (data.condoFees || 0) + propertyTaxMonthly + energy + internet + pno;
+
+                            return (
+                                <>
+                                    <div className="flex justify-between font-semibold border-b pb-2 mb-2">
+                                        <span>Total Sorties Cash</span>
+                                        <span>~{Math.round(totalMonthly).toLocaleString()} €/mois</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-slate-600">
+                                        <div className="flex justify-between"><span>Prêt Bancaire</span><span>{Math.round(mainPayment)} €</span></div>
+                                        {data.includePTZ && <div className="flex justify-between text-blue-600"><span>PTZ (Lissé 20 ans)</span><span>{Math.round(ptzPayment)} €</span></div>}
+                                        {data.includeActionLogement && <div className="flex justify-between text-blue-600"><span>Action Logement (Lissé)</span><span>{Math.round(actionPayment)} €</span></div>}
+                                        <div className="flex justify-between"><span>Charges Copro</span><span>{data.condoFees || 0} €</span></div>
+                                        <div className="flex justify-between"><span>Taxe Foncière (mensualisée)</span><span>{propertyTaxMonthly} €</span></div>
+                                        <div className="flex justify-between text-slate-500">
+                                            <span>Énergie (Estim. {data.heatingType === 'COLLECTIVE' ? 'Coll.' : 'Indiv.'})</span>
+                                            <span>~{energy} €</span>
+                                        </div>
+                                        <div className="flex justify-between text-slate-500"><span>Internet</span><span>~{internet} €</span></div>
+                                        <div className="flex justify-between text-slate-500"><span>Assurance PNO</span><span>~{pno} €</span></div>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

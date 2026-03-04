@@ -13,11 +13,12 @@ export function FiscalModeSelector({ currentMode, onModeChange }: FiscalModeSele
         { id: 'LMNP_MICRO', label: 'LMNP Micro', sub: 'Abattement 50%', icon: Home },
         { id: 'LMNP_REEL', label: 'LMNP Réel', sub: 'Amortissement', icon: Briefcase },
         { id: 'FONCIER_MICRO', label: 'Nu Micro', sub: 'Abattement 30%', icon: Building2 },
+        { id: 'FONCIER_REEL', label: 'Nu Réel', sub: 'Charges Réelles', icon: Building2 },
         { id: 'SCI_IS', label: 'SCI à l\'IS', sub: 'Impôt Société', icon: Landmark },
     ];
 
     return (
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
             {modes.map((mode) => {
                 const isSelected = currentMode === mode.id;
                 const Icon = mode.icon;
