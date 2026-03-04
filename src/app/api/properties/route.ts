@@ -110,11 +110,9 @@ export async function GET(request: Request) {
             if (source && source !== 'all') { conditions.push('source = ?'); params.push(source); }
             if (ownerType && ownerType !== 'all') { conditions.push('ownerType = ?'); params.push(ownerType); }
             if (regionName && regionName !== 'all') {
-                const depts = REGIONS[regionName];
-                if (depts?.length) {
-                    conditions.push(`${DEPT_FROM_POSTAL_SQL} IN (${depts.map(() => '?').join(',')})`);
-                    params.push(...depts);
-                }
+                // Optimisation : filtre par colonne region (index) si disponible
+                conditions.push('(region = ? OR (region IS NULL AND ' + DEPT_FROM_POSTAL_SQL + ' IN (' + (REGIONS[regionName]?.map(() => '?') ?? []).join(',') + ')))');
+                params.push(regionName, ...(REGIONS[regionName] ?? []));
             } else if (department && department !== 'all') {
                 conditions.push(`${DEPT_FROM_POSTAL_SQL} = ?`);
                 params.push(department);

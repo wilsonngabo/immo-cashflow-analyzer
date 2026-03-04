@@ -1,194 +1,233 @@
 #!/usr/bin/env python3
 """
-Daily LBC Scraping Pipeline
-This script is designed to run automatically every day to keep the properties.db 
-database up to date with the latest listings.
-It now dynamically fetches departments from the Geo API.
+Pipeline LBC : par région puis par tranche de prix 25k€.
+Sortie : un fichier Parquet par région (data/region_<slug>.parquet).
+Pas d'incrémental : on recrée les parquets à chaque run.
+En fin : merge Parquet → SQLite, puis affichage durée + nombre de listings.
 """
 
 import os
 import sys
 import time
 import random
+import sqlite3
 from datetime import datetime
-import requests
+
 import lbc_scrape
+from regions import REGIONS, DEPARTMENTS, region_slug
 
 TARGET_TYPES = ["buy"]
-DB_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "properties.db")
-# L'API LBC limite l'offset à ~2500. On utilise la pagination par pivot (curseur) pour dépasser
-# cette limite, comme https://github.com/thomasync/leboncoin-api-search (searchMultiples).
-MAX_PER_SEARCH_OFFSET = 2500   # plafond si on n'utilise que l'offset
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+DB_FILE = os.path.join(DATA_DIR, "properties.db")
+MAX_PER_SEARCH_OFFSET = 2500
 PAGE_SIZE = 100
-# Cap par recherche (dépt × tranche × type) pour éviter boucles infinies si l'API renvoie toujours un pivot
 MAX_ADS_PER_SEARCH = 50_000
 
-# Type de bien (comme sur leboncoin "Type de bien") — 2 recherches par tranche de prix pour dépasser 2500/dépt.
 PROPERTY_KINDS_FULL = [
     ("apartment", "appartement"),
     ("house", "maison"),
 ]
 
-# Tranches de prix (€) — plus de tranches = plus de requêtes et plus d’annonces récupérées au total
-PRICE_RANGES = [
-    (0, 50_000),
-    (50_000, 100_000),
-    (100_000, 150_000),
-    (150_000, 200_000),
-    (200_000, 280_000),
-    (280_000, 350_000),
-    (350_000, 450_000),
-    (450_000, 550_000),
-    (550_000, 700_000),
-    (700_000, 900_000),
-    (900_000, 1_200_000),
-    (1_200_000, 1_800_000),
-    (1_800_000, 50_000_000),
+# Tranches de 25k€
+PRICE_RANGES_25K = [
+    (p, p + 25_000) for p in range(0, 2_000_000, 25_000)
 ]
 
-def fetch_geo_data():
-    """Fetches all departments from the Geo API."""
-    print("--> Fetching administrative data from geo.api.gouv.fr...")
+
+def write_parquet(rows: list[dict], path: str) -> None:
     try:
-        depts_resp = requests.get("https://geo.api.gouv.fr/departements", timeout=10)
-        depts_resp.raise_for_status()
-        depts = depts_resp.json()
-        dept_codes = [d['code'] for d in depts]
-        return dept_codes
-    except Exception as e:
-        print(f"[!] Error fetching Geo API: {e}")
-        return ["75", "69", "13", "31", "06", "44", "34", "67", "33", "59"]
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise RuntimeError("pyarrow requis pour le mode Parquet. Installez: pip install pyarrow")
+    if not rows:
+        return
+    # Normaliser les types pour PyArrow (bool, None, str, int, float)
+    def _row(r):
+        out = {}
+        for k, v in r.items():
+            if v is None:
+                out[k] = None
+            elif isinstance(v, bool):
+                out[k] = v
+            elif isinstance(v, (int, float, str)):
+                out[k] = v
+            else:
+                out[k] = str(v)
+        return out
+    normalized = [_row(r) for r in rows]
+    table = pa.Table.from_pylist(normalized)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    pq.write_table(table, path)
+
+
+def read_parquet(path: str) -> list[dict]:
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise RuntimeError("pyarrow requis. pip install pyarrow")
+    if not os.path.isfile(path):
+        return []
+    table = pq.read_table(path)
+    return table.to_pylist()
+
+
+def merge_parquets_to_sqlite(conn) -> int:
+    """Charge tous les Parquet de data/region_*.parquet dans la table properties. Retourne le total inséré."""
+    # Ordre des colonnes aligné sur la table properties + region
+    COLS = [
+        "id", "source", "title", "price", "surface", "rooms", "city", "postalCode", "propertyKind",
+        "listingType", "url", "imageUrl", "description", "scrapedAt", "pricePerSqm",
+        "dpe", "ges", "charges", "floor", "hasElevator", "hasBalcony", "hasParking",
+        "builtYear", "propertyTax", "isNew", "energyHeating", "heatingType",
+        "bedrooms", "isFurnished", "hasCellar", "hasGarage", "terrain", "nbPhotos", "ownerType",
+        "estimatedYield", "estimatedCashflow", "region",
+    ]
+    total = 0
+    for region_name, dept_codes in REGIONS.items():
+        slug = region_slug(region_name)
+        path = os.path.join(DATA_DIR, f"region_{slug}.parquet")
+        if not os.path.isfile(path):
+            continue
+        rows = read_parquet(path)
+        if not rows:
+            continue
+        for r in rows:
+            r["region"] = region_name
+        placeholders = ",".join("?" for _ in COLS)
+        col_list = ", ".join(COLS)
+        for r in rows:
+            vals = [r.get(c) for c in COLS]
+            conn.execute(
+                f"INSERT OR REPLACE INTO properties ({col_list}) VALUES ({placeholders})",
+                vals,
+            )
+            total += 1
+    conn.commit()
+    return total
+
+
+def ensure_region_column(conn) -> None:
+    try:
+        conn.execute("ALTER TABLE properties ADD COLUMN region TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # colonne déjà là
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_region ON properties(region)")
+        conn.commit()
+    except Exception:
+        pass
+
 
 def main() -> None:
+    started_at = time.time()
+    limit_regions = int(os.environ.get("PIPELINE_LIMIT_REGIONS", "0") or "0")  # 0 = toutes
+    regions_items = list(REGIONS.items())
+    if limit_regions > 0:
+        regions_items = regions_items[:limit_regions]
+        print(f"--> Limite: {limit_regions} région(s) (PIPELINE_LIMIT_REGIONS)")
     print("==================================================")
-    print(f"[{datetime.now().isoformat()}] Starting Daily Immo Pipeline (Dynamic Geo)")
+    print(f"[{datetime.now().isoformat()}] Pipeline — par région, tranches 25k€, sortie Parquet (full run)")
     print("==================================================")
 
-    dept_codes = fetch_geo_data()
-    print(f"--> Discovered {len(dept_codes)} departments.")
-
-    conn = lbc_scrape.init_db(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM properties")
-    initial_count = cursor.fetchone()[0]
-
-    total_added_global = 0
-    total_dupes_global = 0
+    os.makedirs(DATA_DIR, exist_ok=True)
 
     for listing_type in TARGET_TYPES:
-        for dept in dept_codes:
-            print(f"\n>>> DEPT {dept} ({listing_type.upper()}) — {len(PRICE_RANGES)} tranches × {len(PROPERTY_KINDS_FULL)} types")
-            dept_added = 0
-            dept_dupes = 0
+        for region_name, dept_codes in regions_items:
+            slug = region_slug(region_name)
+            print(f"\n>>> Région: {region_name} ({slug}) — {len(dept_codes)} départements × {len(PRICE_RANGES_25K)} tranches × {len(PROPERTY_KINDS_FULL)} types")
+            region_props: list[dict] = []
 
             impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
             session = lbc_scrape.cf_requests.Session(impersonate=impersonate)
 
-            for kind_key, kind_label in PROPERTY_KINDS_FULL:
-                for price_min, price_max in PRICE_RANGES:
-                    total_fetched = 0
-                    last_pivot = None
-                    total_in_search = None
-                    range_label = f"{kind_label[:4]} {price_min // 1000}k-{price_max // 1000}k€" if price_max < 50_000_000 else f"{kind_label[:4]} >{price_min // 1_000_000}M€"
+            for dept_code in dept_codes:
+                dept_name = DEPARTMENTS.get(dept_code, dept_code)
+                for kind_key, kind_label in PROPERTY_KINDS_FULL:
+                    for price_min, price_max in PRICE_RANGES_25K:
+                        if price_max > 2_000_000:
+                            continue
+                        total_fetched = 0
+                        last_pivot = None
+                        total_in_search = None
+                        range_label = f"{price_min // 1000}k-{price_max // 1000}k€"
 
-                    while total_fetched < MAX_ADS_PER_SEARCH:
-                        batch_size = min(PAGE_SIZE, MAX_ADS_PER_SEARCH - total_fetched)
-                        # Use pivot if we have one (cursor pagination); else use offset (limited to 2500 by API)
-                        use_offset = total_fetched if not last_pivot else 0
-                        if not last_pivot and total_fetched >= MAX_PER_SEARCH_OFFSET:
-                            break
-                        payload = lbc_scrape.build_payload(
-                            city_key=None,
-                            listing_type=listing_type,
-                            kind=kind_key,
-                            limit=batch_size,
-                            offset=use_offset,
-                            min_price=price_min,
-                            max_price=price_max,
-                            min_surface=None,
-                            department_code=dept,
-                            owner_type="all",
-                            pivot=last_pivot,
-                        )
-
-                        result = lbc_scrape.scrape_page(session, payload)
-                        if "error" in result:
-                            print(f"    [!] {range_label}: {result['error']}")
-                            break
-
-                        ads = result.get("ads") or []
-                        if not ads:
-                            break
-
-                        if total_in_search is None and "total" in result:
-                            total_in_search = result.get("total")
-
-                        batch_props = []
-                        for ad in ads:
-                            normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=f"Dép. {dept}")
-                            if normalized:
-                                batch_props.append(normalized)
-
-                        if batch_props:
-                            added, dupes = lbc_scrape.save_to_db(conn, batch_props)
-                            dept_added += added
-                            dept_dupes += dupes
-                            print(f"    {range_label} n={total_fetched + len(ads)}: +{len(batch_props)} (dépt: {dept_added + dept_dupes})", file=sys.stderr)
-
-                        total_fetched += len(ads)
-                        next_pivot = result.get("pivot")
-
-                        if total_in_search is not None and total_fetched >= total_in_search:
-                            break
-                        if len(ads) < batch_size:
-                            break
-                        # Pivot-based: continue with cursor if API returns a new pivot
-                        if next_pivot and next_pivot != last_pivot:
-                            last_pivot = next_pivot
-                        else:
-                            # No pivot: continue with offset until 2500 (API limit per search)
-                            last_pivot = None
-                            if total_fetched >= MAX_PER_SEARCH_OFFSET:
+                        while total_fetched < MAX_ADS_PER_SEARCH:
+                            batch_size = min(PAGE_SIZE, MAX_ADS_PER_SEARCH - total_fetched)
+                            use_offset = total_fetched if not last_pivot else 0
+                            if not last_pivot and total_fetched >= MAX_PER_SEARCH_OFFSET:
                                 break
+                            payload = lbc_scrape.build_payload(
+                                city_key=None,
+                                listing_type=listing_type,
+                                kind=kind_key,
+                                limit=batch_size,
+                                offset=use_offset,
+                                min_price=price_min,
+                                max_price=price_max,
+                                min_surface=None,
+                                department_code=dept_code,
+                                owner_type="all",
+                                pivot=last_pivot,
+                            )
+                            result = lbc_scrape.scrape_page(session, payload)
+                            if "error" in result:
+                                print(f"    [!] {dept_code} {range_label}: {result['error']}", file=sys.stderr)
+                                break
+                            ads = result.get("ads") or []
+                            if not ads:
+                                break
+                            if total_in_search is None and "total" in result:
+                                total_in_search = result.get("total")
+                            for ad in ads:
+                                normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=dept_name)
+                                if normalized:
+                                    normalized["region"] = region_name
+                                    region_props.append(normalized)
+                            total_fetched += len(ads)
+                            next_pivot = result.get("pivot")
+                            if total_in_search is not None and total_fetched >= total_in_search:
+                                break
+                            if len(ads) < batch_size:
+                                break
+                            if next_pivot and next_pivot != last_pivot:
+                                last_pivot = next_pivot
+                            else:
+                                last_pivot = None
+                                if total_fetched >= MAX_PER_SEARCH_OFFSET:
+                                    break
+                            time.sleep(random.uniform(1.5, 3.0))
 
-                        time.sleep(random.uniform(0.8, 1.8))
+            parquet_path = os.path.join(DATA_DIR, f"region_{slug}.parquet")
+            write_parquet(region_props, parquet_path)
+            print(f"--- Région {region_name} terminée: {len(region_props)} annonces → {parquet_path}")
 
-            total_added_global += dept_added
-            total_dupes_global += dept_dupes
-            print(f"--- Dept {dept} Finished: {dept_added} new, {dept_dupes} skipped.")
-
-    # Call external scrapers for major cities
-    import subprocess
-    cities_to_scrape = ["Paris", "Lyon", "Marseille", "Bordeaux", "Toulouse"]
-    
-    print("\n==================================================")
-    print(">>> Starting External Scrapers (Bienveo & SeLoger)")
-    print("==================================================")
-    
-    for city in cities_to_scrape:
-        print(f"--> Scraping Bienveo for {city}")
-        try:
-            subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "bienveo_scrape.py"), "--city", city, "--type", "buy", "--db", DB_FILE], check=False)
-        except Exception as e:
-            print(f"Error running Bienveo: {e}")
-            
-        print(f"--> Scraping SeLoger for {city}")
-        try:
-            subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "seloger_scrape.py"), "--city", city, "--type", "buy", "--db", DB_FILE], check=False)
-        except Exception as e:
-            print(f"Error running SeLoger: {e}")
-
+    # Merge Parquet → SQLite pour le site
+    print("\n--> Merge Parquet → SQLite...")
+    conn = lbc_scrape.init_db(DB_FILE)
+    ensure_region_column(conn)
+    # Vide la table puis re-remplit depuis les parquets (full run, pas d'incrémental)
+    conn.execute("DELETE FROM properties")
+    conn.commit()
+    total_inserted = merge_parquets_to_sqlite(conn)
+    cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM properties")
     final_count = cursor.fetchone()[0]
-    total_new = final_count - initial_count
-    
+    cursor.execute("SELECT COUNT(DISTINCT id) FROM properties")
+    distinct_count = cursor.fetchone()[0]
     conn.close()
 
+    elapsed = time.time() - started_at
+    minutes, secs = int(elapsed // 60), int(elapsed % 60)
+
     print("\n==================================================")
-    print(f"[{datetime.now().isoformat()}] Pipeline Finished")
-    print(f"Total new properties added today: {total_new}")
-    print(f"Total database size: {final_count}")
+    print(f"[{datetime.now().isoformat()}] Pipeline terminée")
+    print(f"Durée totale: {minutes} min {secs} s")
+    print(f"Listings en base: {final_count}")
+    print(f"Annonces distinctes: {distinct_count}")
     print("==================================================")
+
 
 if __name__ == "__main__":
     main()

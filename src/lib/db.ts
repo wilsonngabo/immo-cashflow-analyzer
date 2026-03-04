@@ -49,7 +49,8 @@ export function getDB() {
                 nbPhotos INTEGER,
                 ownerType TEXT,
                 estimatedYield REAL,
-                estimatedCashflow REAL
+                estimatedCashflow REAL,
+                region TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_listingType ON properties(listingType);
             CREATE INDEX IF NOT EXISTS idx_source ON properties(source);
@@ -61,6 +62,7 @@ export function getDB() {
             CREATE INDEX IF NOT EXISTS idx_city ON properties(city);
             CREATE INDEX IF NOT EXISTS idx_estimatedYield ON properties(estimatedYield);
             CREATE INDEX IF NOT EXISTS idx_estimatedCashflow ON properties(estimatedCashflow);
+            CREATE INDEX IF NOT EXISTS idx_region ON properties(region);
         `);
         try {
             db.exec('ALTER TABLE properties ADD COLUMN ownerType TEXT');
@@ -70,6 +72,12 @@ export function getDB() {
         } catch { /* already exists */ }
         try {
             db.exec('ALTER TABLE properties ADD COLUMN estimatedCashflow REAL');
+        } catch { /* already exists */ }
+        try {
+            db.exec('ALTER TABLE properties ADD COLUMN region TEXT');
+        } catch { /* already exists */ }
+        try {
+            db.exec('CREATE INDEX IF NOT EXISTS idx_region ON properties(region)');
         } catch { /* already exists */ }
     }
     return db;

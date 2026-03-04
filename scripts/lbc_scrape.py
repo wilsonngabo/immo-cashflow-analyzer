@@ -51,7 +51,7 @@ REAL_ESTATE_ALL       = ["1", "2"]
 LBC_API_URL = "https://api.leboncoin.fr/finder/search"
 # Fetch single ad by id (same as https://github.com/thomasync/leboncoin-api-search searchById)
 LBC_ADFINDER_URL = "https://api.leboncoin.fr/api/adfinder/v1/myads"
-IMPERSONATE_OPTIONS = ["chrome110", "chrome107", "chrome104", "firefox117", "edge101"]
+IMPERSONATE_OPTIONS = ["chrome110", "chrome107", "chrome104", "edge101"]
 
 
 def init_db(db_path: str):
@@ -107,10 +107,19 @@ def init_db(db_path: str):
     return conn
 
 def save_to_db(conn, properties):
+    """Insertion incrémentale : n'ajoute que les annonces dont l'id n'est pas déjà en base. Retourne (ajoutées, déjà_présentes)."""
     if not properties:
         return (0, 0)
+    ids = [p["id"] for p in properties if p.get("id")]
+    if not ids:
+        return (0, len(properties))
+    placeholders = ",".join("?" for _ in ids)
+    existing = set(row[0] for row in conn.execute(f"SELECT id FROM properties WHERE id IN ({placeholders})", ids).fetchall())
+    to_insert = [p for p in properties if p.get("id") and p["id"] not in existing]
+    if not to_insert:
+        return (0, len(properties))
     query = '''
-        INSERT OR REPLACE INTO properties (
+        INSERT INTO properties (
             id, source, title, price, surface, rooms, city, postalCode, propertyKind,
             listingType, url, imageUrl, description, scrapedAt, pricePerSqm,
             dpe, ges, charges, floor, hasElevator, hasBalcony, hasParking,
@@ -126,9 +135,9 @@ def save_to_db(conn, properties):
             :estimatedYield, :estimatedCashflow
         )
     '''
-    conn.executemany(query, properties)
+    conn.executemany(query, to_insert)
     conn.commit()
-    return (len(properties), 0)
+    return (len(to_insert), len(properties) - len(to_insert))
 
 
 def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int,
@@ -251,7 +260,7 @@ def scrape_page(session, payload: dict, retries: int = 3) -> dict:
             if attempt == 0 and sum(1 for cookie in session.cookies) == 0:
                 # Warm up session
                 session.get("https://www.leboncoin.fr/", timeout=15)
-                time.sleep(random.uniform(0.5, 1.5))
+                time.sleep(random.uniform(1.0, 2.0))
 
             resp = session.post(LBC_API_URL, json=payload, headers=headers, timeout=20)
             if resp.status_code == 200:
@@ -259,7 +268,7 @@ def scrape_page(session, payload: dict, retries: int = 3) -> dict:
             elif resp.status_code == 403:
                 if attempt < retries - 1:
                     session.impersonate = random.choice(IMPERSONATE_OPTIONS)
-                    time.sleep(2 + attempt * 2)
+                    time.sleep(3 + attempt * 3)
                     continue
                 else:
                     return {"error": f"Blocked by Datadome (403) after {retries} attempts"}
@@ -267,7 +276,7 @@ def scrape_page(session, payload: dict, retries: int = 3) -> dict:
                 return {"error": f"HTTP {resp.status_code}"}
         except Exception as e:
             if attempt < retries - 1:
-                time.sleep(1)
+                time.sleep(1.5)
                 continue
             return {"error": str(e)}
     return {"error": "Max retries exceeded"}
@@ -458,7 +467,7 @@ def main():
         if sum(1 for _ in session.cookies) == 0:
             try:
                 session.get("https://www.leboncoin.fr/", timeout=15)
-                time.sleep(0.5)
+                time.sleep(1.0)
             except Exception:
                 pass
         ad = fetch_ad_by_id(session, args.ad_id)
@@ -549,7 +558,7 @@ def main():
         if offset >= total_to_fetch:
             break
 
-        time.sleep(random.uniform(1.0, 2.5))
+        time.sleep(random.uniform(1.5, 3.5))
 
     conn.close()
 
