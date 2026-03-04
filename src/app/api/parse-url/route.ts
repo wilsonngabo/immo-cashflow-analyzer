@@ -37,6 +37,25 @@ function detectSource(url: string): 'seloger' | 'leboncoin' | 'pap' | 'bienici' 
     return 'unknown';
 }
 
+/** Extract LeBonCoin ad list_id from URL e.g. .../ventes_immobilieres/3083550740 */
+function extractLeBonCoinAdId(url: string): number | null {
+    const m = url.match(/leboncoin\.fr\/[^?]+?\/(\d+)(?:\?|$)/i);
+    if (!m) return null;
+    const id = parseInt(m[1], 10);
+    return isNaN(id) || id <= 0 ? null : id;
+}
+
+/** Estimate monthly rent from sale price/surface (same rule as frontend for consistency) */
+function estimateMonthlyRentFromSale(price: number, surface?: number): number {
+    const pricePerSqm = surface && surface > 0 ? price / surface : 0;
+    let yieldPct = 6;
+    if (pricePerSqm > 0) {
+        yieldPct = 10.5 - pricePerSqm / 1000;
+        yieldPct = Math.max(3, Math.min(10, yieldPct));
+    }
+    return Math.round((price * (yieldPct / 100)) / 12);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function deepGet(obj: unknown, ...keys: string[]): unknown {
     let current: unknown = obj;
@@ -364,6 +383,32 @@ export async function POST(request: Request) {
         const scraperApiKey = process.env.SCRAPERAPI_KEY;
         const fetchUrl = buildFetchUrl(url);
 
+        // LeBonCoin: fetch single ad via API (Python curl_cffi) to avoid HTML/JS blocking
+        if (source === 'leboncoin') {
+            const adId = extractLeBonCoinAdId(url);
+            if (adId) {
+                try {
+                    const base = new URL(request.url).origin;
+                    const adRes = await fetch(`${base}/api/lbc-ad?id=${adId}`, {
+                        signal: AbortSignal.timeout(20000),
+                    });
+                    if (adRes.ok) {
+                        const listing = (await adRes.json()) as ParsedListing;
+                        const hasUseful = listing.price || listing.surface || (listing.title && listing.title.length > 5);
+                        if (hasUseful) {
+                            return NextResponse.json({
+                                success: true,
+                                scraperApiConfigured: true,
+                                listing: { ...listing, source: 'LeBonCoin', url },
+                            });
+                        }
+                    }
+                } catch (_) {
+                    // Fall through to HTML fetch
+                }
+            }
+        }
+
         const response = await fetch(fetchUrl, {
             headers: scraperApiKey ? {} : FAKE_BROWSER_HEADERS, // ScraperAPI adds its own headers
             signal: AbortSignal.timeout(15000),
@@ -400,6 +445,10 @@ export async function POST(request: Request) {
 
         const hasUsefulData = parsed.price || parsed.surface || (parsed.title && parsed.title.length > 5);
         const isKnownJsSite = source === 'seloger' || source === 'leboncoin';
+
+        if (parsed.price && !parsed.monthlyRent) {
+            parsed.monthlyRent = estimateMonthlyRentFromSale(parsed.price, parsed.surface);
+        }
 
         if (!hasUsefulData) {
             return NextResponse.json({

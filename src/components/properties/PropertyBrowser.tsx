@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useProfile } from '@/hooks/useProfile';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
     Database, Search, RefreshCw, Loader2, Building2, MapPin,
-    TrendingUp, ChevronLeft, ChevronRight, Zap, AlertCircle, Trash2, Camera, PlayCircle, ExternalLink
+    TrendingUp, ChevronLeft, ChevronRight, Zap, AlertCircle, Camera, ExternalLink
 } from 'lucide-react';
 import { Property, InvestmentData } from '@/lib/types';
 import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxRegimeFinancials } from '@/lib/calculations/annonces';
@@ -58,7 +59,6 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const [properties, setProperties] = useState<Property[]>([]);
     const [stats, setStats] = useState<DBStats | null>(null);
     const [loading, setLoading] = useState(false);
-    const [pipelineLoading, setPipelineLoading] = useState(false);
     const [regions, setRegions] = useState<{ code: string, nom: string }[]>([]);
     const [allDepartments, setAllDepartments] = useState<{ code: string, nom: string, codeRegion: string }[]>([]);
     const [cities, setCities] = useState<{ code: string, nom: string, codesPostaux: string[] }[]>([]);
@@ -80,6 +80,11 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const [filterOwnerType, setFilterOwnerType] = useState('all');
     const [sortBy, setSortBy] = useState('scrapedAt');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const hasHydratedFromUrl = useRef(false);
 
     // DVF: prix médian au m² par code postal (pour "sous/sur le marché")
     const [dvfByPostal, setDvfByPostal] = useState<Record<string, number | null>>({});
@@ -135,7 +140,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         } finally {
             setLoading(false);
         }
-    }, [filterRegion, filterDepartment, filterCity, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
+    }, [filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
 
     // Ré-ordonner par le cashflow/renta affiché (meilleur régime) pour que l'ordre corresponde à l'écran
     const displayedProperties = useMemo(() => {
@@ -165,6 +170,38 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         return properties;
     }, [properties, sortBy, sortDir, isLoaded, profile]);
 
+    // Hydrate filters from URL once on mount (shareable links)
+    useEffect(() => {
+        if (hasHydratedFromUrl.current) return;
+        hasHydratedFromUrl.current = true;
+        const r = searchParams.get('region');
+        const d = searchParams.get('department');
+        const c = searchParams.get('city');
+        const pc = searchParams.get('postalCode');
+        const minP = searchParams.get('minPrice');
+        const maxP = searchParams.get('maxPrice');
+        const minS = searchParams.get('minSurface');
+        const minY = searchParams.get('minYield');
+        const minCf = searchParams.get('minCashflow');
+        const src = searchParams.get('source');
+        const own = searchParams.get('ownerType');
+        const sort = searchParams.get('sortBy');
+        const dir = searchParams.get('sortDir');
+        if (r != null) setFilterRegion(r);
+        if (d != null) setFilterDepartment(d);
+        if (c != null) setFilterCity(c);
+        if (pc != null) setFilterPostalCode(pc);
+        if (minP != null) setFilterMinPrice(minP);
+        if (maxP != null) setFilterMaxPrice(maxP);
+        if (minS != null) setFilterMinSurface(minS);
+        if (minY != null) setFilterMinYield(minY);
+        if (minCf != null) setFilterMinCashflow(minCf);
+        if (src != null) setFilterSource(src);
+        if (own != null) setFilterOwnerType(own);
+        if (sort != null) setSortBy(sort);
+        if (dir === 'asc' || dir === 'desc') setSortDir(dir);
+    }, [searchParams]);
+
     useEffect(() => {
         fetch('https://geo.api.gouv.fr/regions')
             .then(res => res.json())
@@ -188,12 +225,40 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             .catch(console.error);
     }, [filterDepartment]);
 
+    // Debounced fetch: wait 400ms after last filter change so typing is seamless
     useEffect(() => {
-        fetchProperties(1);
-        setPage(1);
+        const t = setTimeout(() => {
+            fetchProperties(1);
+            setPage(1);
+        }, 400);
+        return () => clearTimeout(t);
     }, [fetchProperties]);
 
-    // Fetch DVF median price per m² for unique postal codes on the current page
+    // Sync filters to URL (debounced) so links are shareable and back button works
+    useEffect(() => {
+        const t = setTimeout(() => {
+            const p = new URLSearchParams();
+            if (filterRegion !== 'all') p.set('region', filterRegion);
+            if (filterDepartment !== 'all') p.set('department', filterDepartment);
+            if (filterCity !== 'all') p.set('city', filterCity);
+            if (filterPostalCode) p.set('postalCode', filterPostalCode);
+            if (filterMinPrice) p.set('minPrice', filterMinPrice);
+            if (filterMaxPrice) p.set('maxPrice', filterMaxPrice);
+            if (filterMinSurface) p.set('minSurface', filterMinSurface);
+            if (filterMinYield) p.set('minYield', filterMinYield);
+            if (filterMinCashflow) p.set('minCashflow', filterMinCashflow);
+            if (filterSource !== 'all') p.set('source', filterSource);
+            if (filterOwnerType !== 'all') p.set('ownerType', filterOwnerType);
+            if (sortBy !== 'scrapedAt') p.set('sortBy', sortBy);
+            if (sortDir !== 'desc') p.set('sortDir', sortDir);
+            const q = p.toString();
+            const url = q ? `${pathname}?${q}` : pathname;
+            router.replace(url, { scroll: false });
+        }, 500);
+        return () => clearTimeout(t);
+    }, [pathname, router, filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
+
+    // Fetch DVF median price
     useEffect(() => {
         const postals = new Set<string>();
         properties.forEach(p => {
@@ -212,18 +277,6 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         });
     }, [properties]);
 
-
-
-    const handleClearDB = async () => {
-        if (!confirm('Vider toute la base de données ?')) return;
-        await fetch('/api/scrape', { method: 'DELETE' });
-        setProperties([]);
-        setStats(null);
-        setTotal(0);
-        setFilterRegion('all');
-        setFilterDepartment('all');
-        setFilterCity('all');
-    };
 
     const handleAnalyze = (p: Property) => {
         if (isLoaded && profile && p.listingType === 'buy' && p.price > 0) {
@@ -265,71 +318,33 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         return allDepartments.filter(d => d.codeRegion === selectedRegion.code);
     }, [allDepartments, filterRegion, regions]);
 
-    const handleRunPipeline = async () => {
-        setPipelineLoading(true);
-        try {
-            const res = await fetch('/api/pipeline', { method: 'POST' });
-            if (res.ok) {
-                alert('La pipeline de récupération a été lancée en arrière-plan !');
-            } else {
-                const json = await res.json();
-                alert(`Erreur: ${json.error || 'Erreur lors du lancement.'}`);
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Erreur lors du lancement de la pipeline.');
-        } finally {
-            setPipelineLoading(false);
-        }
-    };
-
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="space-y-8">
+            <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                    <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                        <Database className="w-5 h-5 text-primary" />
+                    <h2 className="text-lg font-semibold tracking-tight text-[#211D1D] dark:text-[#DAD9D3] flex items-center gap-2">
+                        <Database className="w-5 h-5 opacity-70" />
                         Base d&apos;Annonces Immobilières
                     </h2>
-                    <p className="text-sm text-slate-500 mt-0.5">
+                    <p className="text-sm text-[#211D1D]/70 dark:text-[#DAD9D3]/70 mt-1">
                         {total > 0 ? `${total.toLocaleString('fr-FR')} annonce${total > 1 ? 's' : ''} en base` : 'Aucun résultat pour les critères choisis'}
                     </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                        La pipeline boucle par département et par tranche de prix pour récupérer toutes les annonces (jusqu&apos;à 2 500 par recherche).
-                    </p>
-                </div>
-                <div className="flex gap-2 items-center">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2 border-primary text-primary hover:bg-primary/5"
-                        onClick={handleRunPipeline}
-                        disabled={pipelineLoading}
-                    >
-                        {pipelineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                        Lancer la Pipeline
-                    </Button>
-                    {total > 0 && (
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-red-500 gap-1" onClick={handleClearDB}>
-                            <Trash2 className="w-3.5 h-3.5" /> Vider la base
-                        </Button>
-                    )}
                 </div>
             </div>
 
-            {/* Stats row */}
+            {/* Stats row — style AVA: fond discret, typo claire */}
             {stats && stats.total > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
                         { label: 'Total annonces', value: stats.total, sub: `LBC: ${stats.bySources.leboncoin} / SL: ${stats.bySources.seloger}` },
                         { label: 'Prix moyen', value: fmtPrice(stats.avgPrice), sub: 'Toutes villes' },
                         { label: 'Surface moyenne', value: `${stats.avgSurface} m²`, sub: 'Annonces avec surface' },
                         { label: 'Prix/m² moyen', value: `${stats.avgPricePerSqm.toLocaleString('fr-FR')} €/m²`, sub: 'Annonces calculables' },
                     ].map(s => (
-                        <div key={s.label} className="glass-card rounded-xl p-4 border border-slate-200/60 bg-white/80">
-                            <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{s.label}</div>
-                            <div className="text-lg font-bold text-slate-800 mt-1">{s.value}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{s.sub}</div>
+                        <div key={s.label} className="rounded-2xl p-5 bg-[#211D1D]/[0.04] dark:bg-[#DAD9D3]/[0.06] border border-[#211D1D]/[0.08] dark:border-[#DAD9D3]/[0.12]">
+                            <div className="text-[10px] font-medium text-[#211D1D]/60 dark:text-[#DAD9D3]/60 uppercase tracking-widest">{s.label}</div>
+                            <div className="text-xl font-semibold text-[#211D1D] dark:text-[#DAD9D3] mt-2">{s.value}</div>
+                            <div className="text-xs text-[#211D1D]/50 dark:text-[#DAD9D3]/50 mt-1">{s.sub}</div>
                         </div>
                     ))}
                 </div>
@@ -474,29 +489,29 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
 
             {/* Property grid */}
             {apiError ? (
-                <div className="text-center py-12 text-amber-700 bg-amber-50 rounded-xl border border-amber-200 max-w-md mx-auto">
-                    <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-70" />
-                    <p className="text-sm font-medium">Erreur de chargement</p>
-                    <p className="text-xs mt-1 text-amber-600">{apiError}</p>
-                    <Button variant="outline" size="sm" className="mt-4" onClick={() => fetchProperties(1)}>
+                <div className="text-center py-16 rounded-2xl border border-[#211D1D]/10 dark:border-[#DAD9D3]/10 bg-[#211D1D]/[0.03] dark:bg-[#DAD9D3]/[0.05] max-w-md mx-auto">
+                    <AlertCircle className="w-10 h-10 mx-auto mb-4 text-[#211D1D]/60 dark:text-[#DAD9D3]/60" />
+                    <p className="text-sm font-medium text-[#211D1D] dark:text-[#DAD9D3]">Erreur de chargement</p>
+                    <p className="text-xs mt-2 text-[#211D1D]/60 dark:text-[#DAD9D3]/60">{apiError}</p>
+                    <Button variant="outline" size="sm" className="mt-6 rounded-full border-[#211D1D]/20 dark:border-[#DAD9D3]/20" onClick={() => fetchProperties(1)}>
                         <RefreshCw className="w-4 h-4 mr-2" /> Réessayer
                     </Button>
                 </div>
             ) : loading ? (
-                <div className="flex justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                <div className="flex justify-center py-16">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#211D1D]/40 dark:text-[#DAD9D3]/40" />
                 </div>
             ) : properties.length === 0 || total === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                    <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <div className="text-center py-16 text-[#211D1D]/60 dark:text-[#DAD9D3]/60">
+                    <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="text-sm font-medium">Aucun résultat</p>
-                    <p className="text-xs mt-1">Modifiez les filtres ou lancez une collecte ci-dessus.</p>
+                    <p className="text-xs mt-2">Modifiez les filtres ou lancez une collecte ci-dessus.</p>
                 </div>
             ) : (
                 <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                         {displayedProperties.map((p, idx) => (
-                            <Card key={p.id} className="flex flex-col overflow-hidden card-hover rounded-xl border border-slate-200/80 bg-white shadow-sm group animate-fade-in-up" style={{ animationDelay: `${Math.min(idx * 0.04, 0.36)}s` }}>
+                            <Card key={p.id} className="flex flex-col overflow-hidden card-hover rounded-2xl border border-[#211D1D]/[0.08] dark:border-[#DAD9D3]/[0.12] bg-[#DAD9D3]/50 dark:bg-[#211D1D]/50 group animate-fade-in-up" style={{ animationDelay: `${Math.min(idx * 0.04, 0.36)}s` }}>
                                 {/* Image */}
                                 {p.imageUrl ? (
                                     <div className="h-36 bg-slate-100 overflow-hidden relative">

@@ -497,6 +497,17 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                         </div>
                     </div>
 
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3">
+                        <div>
+                            <Label className="text-sm font-medium">Simulation en colocation</Label>
+                            <p className="text-xs text-slate-500 mt-0.5">Loyer × 1,28 (estimation loyer par chambre)</p>
+                        </div>
+                        <Switch
+                            checked={!!data.simulationColoc}
+                            onCheckedChange={(checked) => handleChange('simulationColoc', checked)}
+                        />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Assurance PNO /an (€)</Label>

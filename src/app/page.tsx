@@ -19,7 +19,7 @@ import { FinancialProjectionChart } from '@/components/calculator/FinancialProje
 import { PrintReport } from '@/components/calculator/PrintReport';
 import { SensitivityPanel } from '@/components/calculator/SensitivityPanel';
 import { AmortizationTable } from '@/components/calculator/AmortizationTable';
-import { calculateFinancials, calculateAllFiscalModes } from '@/lib/calculations/financials';
+import { calculateFinancials, calculateAllFiscalModes, calculateNotaryFees } from '@/lib/calculations/financials';
 import { calculateInvestmentScore } from '@/lib/calculations/score';
 import { InvestmentData, FinancialResults, SavedSimulation } from '@/lib/types';
 import Link from 'next/link';
@@ -128,9 +128,27 @@ export default function Home() {
   }, [simulations]);
 
   const handleImport = (importedData: Partial<InvestmentData>) => {
-    const newData = { ...data, ...importedData };
+    let newData = { ...data, ...importedData };
     if (importedData.price != null && importedData.loanAmount === undefined) {
       newData.loanAmount = importedData.price;
+    }
+    // Estimation dynamique : loyer mensuel, frais de notaire, prêt (quand on a prix/surface depuis un lien)
+    if (newData.price > 0) {
+      if (!importedData.monthlyRent) {
+        const surface = newData.surface || 0;
+        const pricePerSqm = surface > 0 ? newData.price / surface : 0;
+        let yieldPct = 6;
+        if (pricePerSqm > 0) {
+          yieldPct = 10.5 - pricePerSqm / 1000;
+          yieldPct = Math.max(3, Math.min(10, yieldPct));
+        }
+        newData.monthlyRent = Math.round((newData.price * (yieldPct / 100)) / 12);
+      }
+      if (newData.propertyType) {
+        newData.notaryFees = calculateNotaryFees(newData.price, newData.propertyType, newData.reducedNotaryFees);
+        const totalProject = newData.price + (newData.works || 0) + (newData.furniture || 0) + newData.notaryFees;
+        newData.loanAmount = Math.max(0, totalProject - (newData.personalContribution || 0));
+      }
     }
     setData(newData);
   };
@@ -162,44 +180,44 @@ export default function Home() {
 
   return (
     <>
-      <div className="min-h-screen bg-[hsl(var(--background))] dark:bg-slate-950 pb-0 print:hidden flex flex-col">
-        {/* Header — sticky nav */}
-        <header className="sticky top-0 z-20 px-6 py-4 flex items-center justify-between bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/80 shadow-sm transition-all duration-300">
-          <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-br from-primary/20 to-primary/5 p-3 rounded-2xl border border-primary/10 shadow-sm">
-              <Building2 className="h-7 w-7 text-primary" />
+      <div className="min-h-screen bg-[#DAD9D3] dark:bg-[#211D1D] text-[#211D1D] dark:text-[#DAD9D3] pb-0 print:hidden flex flex-col">
+        {/* Header — style AVA SRG: minimal, deux tons */}
+        <header className="sticky top-0 z-20 px-6 py-5 flex items-center justify-between bg-[#DAD9D3]/95 dark:bg-[#211D1D]/95 backdrop-blur-md border-b border-[#211D1D]/10 dark:border-[#DAD9D3]/10 transition-all duration-300">
+          <div className="flex items-center gap-5">
+            <div className="w-11 h-11 rounded-full bg-[#211D1D] dark:bg-[#DAD9D3] flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-[#DAD9D3] dark:text-[#211D1D]" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ImmoCashFlow</h1>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">Rentabilité & cashflow immobilier</p>
+              <h1 className="text-lg font-semibold tracking-tight text-[#211D1D] dark:text-[#DAD9D3]">ImmoCashFlow</h1>
+              <p className="text-xs text-[#211D1D]/60 dark:text-[#DAD9D3]/60 mt-0.5">Rentabilité & cashflow immobilier</p>
             </div>
           </div>
-          <div className="flex gap-3 items-center">
-            <div className="flex rounded-2xl border border-slate-200 bg-slate-100/80 dark:bg-slate-800/80 p-1 gap-0.5">
+          <div className="flex gap-2 items-center">
+            <div className="flex rounded-full bg-[#211D1D]/5 dark:bg-[#DAD9D3]/5 p-1 gap-0.5">
               <button
                 onClick={() => setActiveView('calculator')}
-                className={`px-4 py-2 text-sm rounded-xl font-medium transition-all duration-200 ${activeView === 'calculator' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white border border-slate-200/80' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                className={`px-4 py-2 text-sm rounded-full font-medium transition-all duration-300 ${activeView === 'calculator' ? 'bg-[#211D1D] dark:bg-[#DAD9D3] text-[#DAD9D3] dark:text-[#211D1D]' : 'text-[#211D1D]/70 dark:text-[#DAD9D3]/70 hover:text-[#211D1D] dark:hover:text-[#DAD9D3]'}`}
               >Calculatrice</button>
               <button
                 onClick={() => setActiveView('browser')}
-                className={`px-4 py-2 text-sm rounded-xl font-medium transition-all duration-200 ${activeView === 'browser' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white border border-slate-200/80' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                className={`px-4 py-2 text-sm rounded-full font-medium transition-all duration-300 ${activeView === 'browser' ? 'bg-[#211D1D] dark:bg-[#DAD9D3] text-[#DAD9D3] dark:text-[#211D1D]' : 'text-[#211D1D]/70 dark:text-[#DAD9D3]/70 hover:text-[#211D1D] dark:hover:text-[#DAD9D3]'}`}
               >Annonces</button>
             </div>
 
             <Link href="/profile">
-              <Button variant="outline" size="sm" className="gap-2 rounded-xl">
+              <Button variant="outline" size="sm" className="gap-2 rounded-full border-[#211D1D]/20 dark:border-[#DAD9D3]/20 text-[#211D1D] dark:text-[#DAD9D3] hover:bg-[#211D1D]/5 dark:hover:bg-[#DAD9D3]/5">
                 <User className="w-4 h-4" /> Profil
               </Button>
             </Link>
 
-            <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={() => window.print()}>
+            <Button variant="outline" size="sm" className="gap-2 rounded-full border-[#211D1D]/20 dark:border-[#DAD9D3]/20 text-[#211D1D] dark:text-[#DAD9D3] hover:bg-[#211D1D]/5" onClick={() => window.print()}>
               <FileText className="w-4 h-4" /> Dossier PDF
             </Button>
-            <Badge variant="secondary" className="px-3 py-1 rounded-lg text-xs">Beta</Badge>
+            <span className="text-[10px] uppercase tracking-wider text-[#211D1D]/50 dark:text-[#DAD9D3]/50 px-2">Beta</span>
           </div>
         </header>
 
-        <main className="flex-1 container mx-auto max-w-7xl pt-10 pb-16 px-4 sm:px-6 lg:px-8 overflow-auto">
+        <main className="flex-1 container mx-auto max-w-7xl pt-12 pb-20 px-4 sm:px-6 lg:px-8 overflow-auto">
 
           {activeView === 'browser' ? (
             <PropertyBrowser

@@ -1,30 +1,35 @@
-# Automatisation Quotidienne (Pipeline)
+# Automatisation de la pipeline (LeBonCoin + SeLoger + Bienveo)
 
-Pour récupérer **toutes les annonces** automatiquement chaque jour (pipeline ETL), vous pouvez utiliser le script `pipeline.py`.
+La **pipeline ne se lance plus à la main** depuis l’interface. Elle est gérée automatiquement.
 
-Ce script itère sur les 10 plus grandes villes de France (Paris, Lyon, Marseille...) et récupère jusqu'à **2000 annonces** par ville pour la location et l'achat, en contournant Datadome, puis fusionne les nouvelles annonces dans votre base `data/properties.json`.
+## Lancement automatique
 
-## Comment le lancer manuellement :
+- **Au démarrage du site** : 30 secondes après le démarrage du serveur Next.js (`next start` ou `next dev`), la pipeline est lancée une fois en arrière-plan.
+- **Ensuite** : elle est relancée **toutes les 24 heures** (même processus Node).
 
-Ouvrez un terminal dans le dossier du projet et lancez :
+Aucun clic ni configuration côté utilisateur n’est nécessaire pour que les annonces se mettent à jour.
+
+## Option : cron externe (Vercel / hébergement sans processus long)
+
+Si le site est hébergé en serverless (ex. Vercel), le processus ne tourne pas en continu : la pipeline ne peut pas être relancée toutes les 24 h par le serveur. Vous pouvez alors :
+
+1. **Vercel Cron** : dans `vercel.json` ajouter par exemple :
+   ```json
+   "crons": [{ "path": "/api/cron/pipeline", "schedule": "0 2 * * *" }]
+   ```
+   et définir la variable d’environnement `CRON_SECRET` sur Vercel. Appeler l’URL avec `?secret=VOTRE_CRON_SECRET` (ou en en-tête `Authorization: Bearer VOTRE_CRON_SECRET`).
+
+2. **Cron système** (ex. Planificateur de tâches Windows) : une fois par jour, appeler :
+   ```text
+   https://votre-domaine.com/api/cron/pipeline?secret=VOTRE_CRON_SECRET
+   ```
+
+## Lancement manuel (dépannage)
+
+En ligne de commande, à la racine du projet :
+
 ```cmd
 python scripts/pipeline.py
 ```
-*(Si Python n'est pas dans votre PATH, utilisez le chemin complet de l'exécutable Python 3.12 que nous venons d'installer).*
 
-## Comment l'automatiser tous les jours (Windows) :
-
-Puisque vous êtes sous Windows, le moyen le plus logique et autonome est d'utiliser le **Planificateur de Tâches Windows (Task Scheduler)**.
-
-1. Appuyez sur la touche `Windows`, tapez **Planificateur de tâches** et ouvrez-le.
-2. Cliquez sur **Créer une tâche de base...** dans le menu de droite.
-3. Donnez un nom : `ImmoCashFlow - Pipeline LeBonCoin`.
-4. Déclencheur : Choisissez **Tous les jours** (ex: à 02:00 du matin).
-5. Action : Choisissez **Démarrer un programme**.
-6. Configuration du programme :
-   - **Programme/Script** : Mettez le chemin vers Python. Par exemple : `C:\Users\wilson\AppData\Local\Programs\Python\Python312\python.exe`
-   - **Ajouter des arguments** : `scripts/pipeline.py`
-   - **Commencer dans** : Mettez le chemin absolu vers votre dossier de projet : `C:\Users\wilson\GIT\immo-cashflow-analyzer`
-7. Cliquez sur **Terminer**.
-
-Et voilà ! Le script s'exécutera discrètement en arrière-plan chaque nuit, peuplant votre base de données avec des milliers d'annonces fraîches. Votre tableau de bord Web aura toujours accès à toutes ces données le lendemain matin.
+*(Si Python n’est pas dans le PATH, utilisez le chemin complet vers l’exécutable Python 3.12.)*

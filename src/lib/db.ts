@@ -47,19 +47,30 @@ export function getDB() {
                 hasGarage BOOLEAN,
                 terrain REAL,
                 nbPhotos INTEGER,
-                ownerType TEXT
+                ownerType TEXT,
+                estimatedYield REAL,
+                estimatedCashflow REAL
             );
             CREATE INDEX IF NOT EXISTS idx_listingType ON properties(listingType);
             CREATE INDEX IF NOT EXISTS idx_source ON properties(source);
             CREATE INDEX IF NOT EXISTS idx_postalCode ON properties(postalCode);
             CREATE INDEX IF NOT EXISTS idx_scrapedAt ON properties(scrapedAt);
             CREATE INDEX IF NOT EXISTS idx_ownerType ON properties(ownerType);
+            CREATE INDEX IF NOT EXISTS idx_price ON properties(price);
+            CREATE INDEX IF NOT EXISTS idx_surface ON properties(surface);
+            CREATE INDEX IF NOT EXISTS idx_city ON properties(city);
+            CREATE INDEX IF NOT EXISTS idx_estimatedYield ON properties(estimatedYield);
+            CREATE INDEX IF NOT EXISTS idx_estimatedCashflow ON properties(estimatedCashflow);
         `);
         try {
             db.exec('ALTER TABLE properties ADD COLUMN ownerType TEXT');
-        } catch {
-            // Column already exists
-        }
+        } catch { /* already exists */ }
+        try {
+            db.exec('ALTER TABLE properties ADD COLUMN estimatedYield REAL');
+        } catch { /* already exists */ }
+        try {
+            db.exec('ALTER TABLE properties ADD COLUMN estimatedCashflow REAL');
+        } catch { /* already exists */ }
     }
     return db;
 }

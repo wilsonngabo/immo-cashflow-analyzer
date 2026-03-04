@@ -153,7 +153,8 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     // 2. Revenues (Annual) — 0 vacance = 12 mois de loyer, 1 mois vacance = 11 mois, etc.
     const vacancyMonths = data.vacancyMonth ?? 1;
-    const annualGrossRent = data.monthlyRent * (12 - vacancyMonths);
+    const effectiveMonthlyRent = data.simulationColoc ? data.monthlyRent * 1.28 : data.monthlyRent;
+    const annualGrossRent = effectiveMonthlyRent * (12 - vacancyMonths);
 
     // 3. Charges (Annual)
     const annualCondoFees = data.condoFees * 12;

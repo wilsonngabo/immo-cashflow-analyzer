@@ -1,8 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'DM Sans', 'Outfit', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -37,8 +37,10 @@
 }
 
 /*
-  Design inspiration: Wix "31 des plus beaux sites" — Dopple Press (UX),
-  Wendy Ju (minimal), Defne Kaynak (background), Tata Rekso (motion), Cami Ferreol (footer).
+  Design inspiration: AVA SRG (Awwwards SOTD)
+  https://www.awwwards.com/sites/ava-srg
+  Palette 2 couleurs: #DAD9D3 (fond clair), #211D1D (texte / surfaces sombres).
+  Style: minimal, intuitif, animations subtiles, beaucoup d’espace.
 */
 
 /*
@@ -63,68 +65,68 @@
 }
 
 :root {
-  /* Wendy Ju / Defne Kaynak: calm, tasteful, generous space */
-  --background: 220 18% 97%;
-  --foreground: 222 40% 12%;
+  /* AVA SRG — palette 2 couleurs: #DAD9D3, #211D1D */
+  --background: 30 13% 86%;
+  --foreground: 0 7% 13%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 30% 10%;
+  --card: 30 10% 92%;
+  --card-foreground: 0 7% 13%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 30% 10%;
+  --popover: 30 10% 92%;
+  --popover-foreground: 0 7% 13%;
 
-  /* The Robin Collective: one bold accent, rest refined */
-  --primary: 243 58% 42%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 0 7% 13%;
+  --primary-foreground: 30 13% 86%;
 
-  --secondary: 220 14% 95%;
-  --secondary-foreground: 222.2 40% 14%;
+  --secondary: 30 12% 78%;
+  --secondary-foreground: 0 7% 13%;
 
-  --muted: 220 14% 95%;
-  --muted-foreground: 220 10% 42%;
+  --muted: 30 12% 80%;
+  --muted-foreground: 0 5% 35%;
 
-  --accent: 220 14% 94%;
-  --accent-foreground: 222.2 40% 14%;
+  --accent: 30 12% 82%;
+  --accent-foreground: 0 7% 13%;
 
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0 65% 45%;
+  --destructive-foreground: 30 13% 86%;
 
-  --border: 220 14% 90%;
-  --input: 220 14% 92%;
-  --ring: 243 58% 42%;
+  --border: 30 10% 75%;
+  --input: 30 10% 78%;
+  --ring: 0 7% 13%;
 
-  --radius: 0.75rem;
-  --section-gap: 2.5rem;
+  --radius: 0.5rem;
+  --section-gap: 3rem;
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
+  /* AVA SRG dark: #211D1D en fond */
+  --background: 0 7% 13%;
+  --foreground: 30 13% 86%;
 
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
+  --card: 0 6% 18%;
+  --card-foreground: 30 13% 86%;
 
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 0 6% 18%;
+  --popover-foreground: 30 13% 86%;
 
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 30 13% 86%;
+  --primary-foreground: 0 7% 13%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 0 6% 22%;
+  --secondary-foreground: 30 13% 86%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 0 6% 22%;
+  --muted-foreground: 30 10% 65%;
 
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 0 6% 20%;
+  --accent-foreground: 30 13% 86%;
 
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 55% 40%;
+  --destructive-foreground: 30 13% 86%;
 
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
+  --border: 0 6% 25%;
+  --input: 0 6% 22%;
+  --ring: 30 13% 86%;
 }
 
 @layer base {
@@ -141,7 +143,7 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Tiffany Cruz: clear typography hierarchy */
+  /* AVA SRG: hiérarchie typographique claire */
   h1, h2, h3 {
     letter-spacing: -0.02em;
   }
@@ -149,31 +151,50 @@
 
 @layer utilities {
   .glass {
-    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/30 dark:border-slate-700/30 shadow-xl;
+    background-color: rgb(218 217 211 / 0.9);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(33 29 29 / 0.08);
+  }
+  .dark .glass {
+    background-color: rgb(33 29 29 / 0.9);
+    border-color: rgb(218 217 211 / 0.1);
   }
 
   .glass-card {
-    @apply bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/60 shadow-sm transition-all duration-300 hover:shadow-lg hover:border-slate-300/60;
+    background-color: rgb(218 217 211 / 0.6);
+    border: 1px solid rgb(33 29 29 / 0.06);
+    transition: all 0.3s ease;
+  }
+  .glass-card:hover {
+    box-shadow: 0 12px 40px -12px rgb(33 29 29 / 0.08);
+  }
+  .dark .glass-card {
+    background-color: rgb(33 29 29 / 0.4);
+    border-color: rgb(218 217 211 / 0.08);
   }
 
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(to right, #211D1D, #211D1D);
+  }
+  .dark .text-gradient {
+    background-image: linear-gradient(to right, #DAD9D3, #DAD9D3);
   }
 
-  /* Tata Rekso: motion in small doses — premium card hover */
+  /* AVA SRG: motion doux, transitions */
   .card-hover {
-    @apply transition-all duration-300 ease-out;
+    @apply transition-all duration-500 ease-out;
   }
   .card-hover:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 50px -16px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.04);
+    transform: translateY(-2px);
+    box-shadow: 0 24px 48px -12px rgb(33 29 29 / 0.08);
   }
 
-  /* Staggered fade-in for grids (Dopple Press – encourage interaction) */
+  /* Entrée en douceur (style AVA) */
   @keyframes fadeInUp {
     from {
       opacity: 0;
-      transform: translateY(16px);
+      transform: translateY(20px);
     }
     to {
       opacity: 1;
@@ -181,20 +202,10 @@
     }
   }
   .animate-fade-in-up {
-    animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  /* Subtle float for headers / icons (Tata Rekso) */
-  @keyframes subtleFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-2px); }
-  }
-  .animate-subtle-float {
-    animation: subtleFloat 3s ease-in-out infinite;
-  }
-
-  /* Section spacing (Dopple Press – clear, spacious layout) */
   .section-gap {
-    gap: var(--section-gap, 2.5rem);
+    gap: var(--section-gap, 3rem);
   }
 }

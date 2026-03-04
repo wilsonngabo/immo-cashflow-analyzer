@@ -39,6 +39,8 @@ export interface InvestmentData {
     reducedNotaryFees?: boolean; // If true (for HLM), use 3% instead of 8%
     zone?: 'A' | 'B1' | 'B2' | 'C'; // Geographic zone for PTZ
     heatingType?: 'INDIVIDUAL' | 'COLLECTIVE'; // Chauffage individuel vs collectif
+    /** Si true, la simulation utilise un loyer colocation (loyer × 1,28) pour les revenus */
+    simulationColoc?: boolean;
 }
 
 export interface SavedSimulation {

@@ -16,20 +16,34 @@ import lbc_scrape
 
 TARGET_TYPES = ["buy"]
 DB_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "properties.db")
-# L'API LBC limite à ~2500 résultats par recherche. On boucle par tranche de prix
-# pour dépasser cette limite et récupérer toutes les annonces par département.
-MAX_PER_SEARCH = 2500
+# L'API LBC limite l'offset à ~2500. On utilise la pagination par pivot (curseur) pour dépasser
+# cette limite, comme https://github.com/thomasync/leboncoin-api-search (searchMultiples).
+MAX_PER_SEARCH_OFFSET = 2500   # plafond si on n'utilise que l'offset
 PAGE_SIZE = 100
+# Cap par recherche (dépt × tranche × type) pour éviter boucles infinies si l'API renvoie toujours un pivot
+MAX_ADS_PER_SEARCH = 50_000
 
-# Tranches de prix (€) pour couvrir tout le marché sans dépasser la limite API par requête.
+# Type de bien (comme sur leboncoin "Type de bien") — 2 recherches par tranche de prix pour dépasser 2500/dépt.
+PROPERTY_KINDS_FULL = [
+    ("apartment", "appartement"),
+    ("house", "maison"),
+]
+
+# Tranches de prix (€) — plus de tranches = plus de requêtes et plus d’annonces récupérées au total
 PRICE_RANGES = [
-    (0, 100_000),
-    (100_000, 200_000),
-    (200_000, 350_000),
-    (350_000, 500_000),
-    (500_000, 800_000),
-    (800_000, 1_500_000),
-    (1_500_000, 50_000_000),  # luxe / pas de max côté API
+    (0, 50_000),
+    (50_000, 100_000),
+    (100_000, 150_000),
+    (150_000, 200_000),
+    (200_000, 280_000),
+    (280_000, 350_000),
+    (350_000, 450_000),
+    (450_000, 550_000),
+    (550_000, 700_000),
+    (700_000, 900_000),
+    (900_000, 1_200_000),
+    (1_200_000, 1_800_000),
+    (1_800_000, 50_000_000),
 ]
 
 def fetch_geo_data():
@@ -63,64 +77,81 @@ def main() -> None:
 
     for listing_type in TARGET_TYPES:
         for dept in dept_codes:
-            print(f"\n>>> DEPT {dept} ({listing_type.upper()}) — {len(PRICE_RANGES)} tranches de prix")
+            print(f"\n>>> DEPT {dept} ({listing_type.upper()}) — {len(PRICE_RANGES)} tranches × {len(PROPERTY_KINDS_FULL)} types")
             dept_added = 0
             dept_dupes = 0
 
             impersonate = random.choice(lbc_scrape.IMPERSONATE_OPTIONS)
             session = lbc_scrape.cf_requests.Session(impersonate=impersonate)
 
-            for price_min, price_max in PRICE_RANGES:
-                offset = 0
-                total_in_search = None
-                range_label = f"{price_min // 1000}k-{price_max // 1000}k€" if price_max < 50_000_000 else f">{price_min // 1_000_000}M€"
+            for kind_key, kind_label in PROPERTY_KINDS_FULL:
+                for price_min, price_max in PRICE_RANGES:
+                    total_fetched = 0
+                    last_pivot = None
+                    total_in_search = None
+                    range_label = f"{kind_label[:4]} {price_min // 1000}k-{price_max // 1000}k€" if price_max < 50_000_000 else f"{kind_label[:4]} >{price_min // 1_000_000}M€"
 
-                while offset < MAX_PER_SEARCH:
-                    batch_size = min(PAGE_SIZE, MAX_PER_SEARCH - offset)
-                    payload = lbc_scrape.build_payload(
-                        city_key=None,
-                        listing_type=listing_type,
-                        kind="both",
-                        limit=batch_size,
-                        offset=offset,
-                        min_price=price_min,
-                        max_price=price_max,
-                        min_surface=None,
-                        department_code=dept,
-                        owner_type="all",
-                    )
+                    while total_fetched < MAX_ADS_PER_SEARCH:
+                        batch_size = min(PAGE_SIZE, MAX_ADS_PER_SEARCH - total_fetched)
+                        # Use pivot if we have one (cursor pagination); else use offset (limited to 2500 by API)
+                        use_offset = total_fetched if not last_pivot else 0
+                        if not last_pivot and total_fetched >= MAX_PER_SEARCH_OFFSET:
+                            break
+                        payload = lbc_scrape.build_payload(
+                            city_key=None,
+                            listing_type=listing_type,
+                            kind=kind_key,
+                            limit=batch_size,
+                            offset=use_offset,
+                            min_price=price_min,
+                            max_price=price_max,
+                            min_surface=None,
+                            department_code=dept,
+                            owner_type="all",
+                            pivot=last_pivot,
+                        )
 
-                    result = lbc_scrape.scrape_page(session, payload)
-                    if "error" in result:
-                        print(f"    [!] {range_label}: {result['error']}")
-                        break
+                        result = lbc_scrape.scrape_page(session, payload)
+                        if "error" in result:
+                            print(f"    [!] {range_label}: {result['error']}")
+                            break
 
-                    ads = result.get("ads") or []
-                    if not ads:
-                        break
+                        ads = result.get("ads") or []
+                        if not ads:
+                            break
 
-                    if total_in_search is None and "total" in result:
-                        total_in_search = result.get("total")
+                        if total_in_search is None and "total" in result:
+                            total_in_search = result.get("total")
 
-                    batch_props = []
-                    for ad in ads:
-                        normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=f"Dép. {dept}")
-                        if normalized:
-                            batch_props.append(normalized)
+                        batch_props = []
+                        for ad in ads:
+                            normalized = lbc_scrape.normalize_ad(ad, listing_type, city_label=f"Dép. {dept}")
+                            if normalized:
+                                batch_props.append(normalized)
 
-                    if batch_props:
-                        added, dupes = lbc_scrape.save_to_db(conn, batch_props)
-                        dept_added += added
-                        dept_dupes += dupes
-                        print(f"    {range_label} offset={offset}: +{len(batch_props)} (total dépt: {dept_added + dept_dupes})", file=sys.stderr)
+                        if batch_props:
+                            added, dupes = lbc_scrape.save_to_db(conn, batch_props)
+                            dept_added += added
+                            dept_dupes += dupes
+                            print(f"    {range_label} n={total_fetched + len(ads)}: +{len(batch_props)} (dépt: {dept_added + dept_dupes})", file=sys.stderr)
 
-                    offset += len(ads)
-                    if len(ads) < batch_size:
-                        break
-                    if total_in_search is not None and offset >= total_in_search:
-                        break
+                        total_fetched += len(ads)
+                        next_pivot = result.get("pivot")
 
-                    time.sleep(random.uniform(1, 2))
+                        if total_in_search is not None and total_fetched >= total_in_search:
+                            break
+                        if len(ads) < batch_size:
+                            break
+                        # Pivot-based: continue with cursor if API returns a new pivot
+                        if next_pivot and next_pivot != last_pivot:
+                            last_pivot = next_pivot
+                        else:
+                            # No pivot: continue with offset until 2500 (API limit per search)
+                            last_pivot = None
+                            if total_fetched >= MAX_PER_SEARCH_OFFSET:
+                                break
+
+                        time.sleep(random.uniform(0.8, 1.8))
 
             total_added_global += dept_added
             total_dupes_global += dept_dupes

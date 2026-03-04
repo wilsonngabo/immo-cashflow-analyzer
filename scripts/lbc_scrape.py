@@ -2,8 +2,8 @@
 """
 LeBonCoin scraper using curl_cffi for TLS browser impersonation.
 Based on: https://github.com/etienne-hd/lbc
+Pagination: pivot-based (cursor) to go past the ~2500 offset limit, see https://github.com/thomasync/leboncoin-api-search
 Real endpoint: POST https://api.leboncoin.fr/finder/search
-No API key needed — curl_cffi impersonates Chrome TLS fingerprint to bypass Datadome.
 
 Usage:
     python scripts/lbc_scrape.py --city Paris --limit 100 --type buy --db data/properties.db
@@ -49,6 +49,8 @@ REAL_ESTATE_HOUSE     = ["1"]
 REAL_ESTATE_ALL       = ["1", "2"]
 
 LBC_API_URL = "https://api.leboncoin.fr/finder/search"
+# Fetch single ad by id (same as https://github.com/thomasync/leboncoin-api-search searchById)
+LBC_ADFINDER_URL = "https://api.leboncoin.fr/api/adfinder/v1/myads"
 IMPERSONATE_OPTIONS = ["chrome110", "chrome107", "chrome104", "firefox117", "edge101"]
 
 
@@ -91,14 +93,17 @@ def init_db(db_path: str):
             hasGarage BOOLEAN,
             terrain REAL,
             nbPhotos INTEGER,
-            ownerType TEXT
+            ownerType TEXT,
+            estimatedYield REAL,
+            estimatedCashflow REAL
         )
     ''')
-    try:
-        conn.execute("ALTER TABLE properties ADD COLUMN ownerType TEXT")
-        conn.commit()
-    except Exception:
-        pass
+    for col, typ in (("ownerType", "TEXT"), ("estimatedYield", "REAL"), ("estimatedCashflow", "REAL")):
+        try:
+            conn.execute(f"ALTER TABLE properties ADD COLUMN {col} {typ}")
+            conn.commit()
+        except Exception:
+            pass
     return conn
 
 def save_to_db(conn, properties):
@@ -110,13 +115,15 @@ def save_to_db(conn, properties):
             listingType, url, imageUrl, description, scrapedAt, pricePerSqm,
             dpe, ges, charges, floor, hasElevator, hasBalcony, hasParking,
             builtYear, propertyTax, isNew, energyHeating, heatingType,
-            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos, ownerType
+            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos, ownerType,
+            estimatedYield, estimatedCashflow
         ) VALUES (
             :id, :source, :title, :price, :surface, :rooms, :city, :postalCode, :propertyKind,
             :listingType, :url, :imageUrl, :description, :scrapedAt, :pricePerSqm,
             :dpe, :ges, :charges, :floor, :hasElevator, :hasBalcony, :hasParking,
             :builtYear, :propertyTax, :isNew, :energyHeating, :heatingType,
-            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos, :ownerType
+            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos, :ownerType,
+            :estimatedYield, :estimatedCashflow
         )
     '''
     conn.executemany(query, properties)
@@ -128,7 +135,7 @@ def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int
                   offset: int, min_price: int | None, max_price: int | None,
                   min_surface: int | None, radius_m: int = 10_000, 
                   department_code: str | None = None,
-                  owner_type: str = "all") -> dict:
+                  owner_type: str = "all", pivot: str | None = None) -> dict:
     city = CITIES.get((city_key or "").lower(), CITIES["paris"])
 
     category = CATEGORY_BUY if listing_type == "buy" else CATEGORY_RENT
@@ -149,6 +156,7 @@ def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int
         enums["ad_owner_type"] = ["professional"]
     # else "all" -> no ad_owner_type filter, API returns both
 
+    # Pivot-based pagination (cursor) can go past the ~2500 offset limit (see leboncoin-api-search)
     payload: dict = {
         "filters": {
             "category": {"id": category},
@@ -156,13 +164,16 @@ def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int
         },
         "limit": min(limit, 100),
         "limit_alu": 0,
-        "offset": offset,
         "disable_total": False,
         "extend": True,
-        "listing_source": "direct-search" if offset == 0 else "pagination",
+        "listing_source": "direct-search" if (offset == 0 and not pivot) else "pagination",
         "sort_by": "time",
         "sort_order": "desc",
     }
+    if pivot:
+        payload["pivot"] = pivot
+    else:
+        payload["offset"] = offset
     
     if department_code:
         payload["filters"]["location"] = {
@@ -262,6 +273,27 @@ def scrape_page(session, payload: dict, retries: int = 3) -> dict:
     return {"error": "Max retries exceeded"}
 
 
+def fetch_ad_by_id(session, list_id: int) -> dict | None:
+    """Fetch a single ad by list_id (for import by URL). Same endpoint as leboncoin-api-search searchById."""
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Language": "fr-FR,fr;q=0.9",
+        "Origin": "https://www.leboncoin.fr",
+        "Referer": "https://www.leboncoin.fr/",
+    }
+    try:
+        resp = session.post(LBC_ADFINDER_URL, json={"ids": [list_id]}, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if isinstance(data, list) and len(data) > 0:
+            return data[0]
+        return None
+    except Exception:
+        return None
+
+
 def normalize_ad(ad: dict, listing_type: str, city_label: str | None) -> dict | None:
     attrs = ad.get("attributes") or []
     images_obj = ad.get("images") or {}
@@ -350,6 +382,17 @@ def normalize_ad(ad: dict, listing_type: str, city_label: str | None) -> dict | 
         elif v in ("professional", "pro", "professionnel"):
             owner_type = "professional"
 
+    # Estimated yield & cashflow (same formula as frontend) for SQL filtering
+    if price and price > 0 and surface and surface > 0:
+        ppsqm = price / surface
+        y = 10.5 - (ppsqm / 1000)
+        y = max(3.0, min(10.0, y))
+    else:
+        y = 6.0
+    cf = (price * (y / 100) * 0.7 - (price * 1.08 * 0.073)) / 12
+    estimated_yield = round(y * 10) / 10
+    estimated_cashflow = round(cf)
+
     return {
         "id": f"lbc_{ad_id}",
         "source": "leboncoin",
@@ -384,12 +427,15 @@ def normalize_ad(ad: dict, listing_type: str, city_label: str | None) -> dict | 
         "hasGarage": has_garage,
         "terrain": terrain,
         "nbPhotos": nb_photos,
-        "ownerType": owner_type
+        "ownerType": owner_type,
+        "estimatedYield": estimated_yield,
+        "estimatedCashflow": estimated_cashflow
     }
 
 
 def main():
     parser = argparse.ArgumentParser(description="LBC scraper using curl_cffi and SQLite")
+    parser.add_argument("--ad-id", type=int, default=None, metavar="ID", help="Fetch a single ad by list_id (for URL import); prints JSON to stdout")
     parser.add_argument("--city", default="Paris", help="City name (e.g. Paris, Lyon)")
     parser.add_argument("--type", default="buy", choices=["buy", "rent"], help="Listing type")
     parser.add_argument("--kind", default="both", choices=["apartment", "house", "both"])
@@ -404,6 +450,39 @@ def main():
     parser.add_argument("--db", default="data/properties.db", help="Output SQLite DB file")
     parser.add_argument("--merge", action="store_true", help="Merge into existing DB (always true for SQLite)")
     args = parser.parse_args()
+
+    # Single-ad fetch for URL import: output JSON to stdout and exit
+    if args.ad_id is not None:
+        impersonate = random.choice(IMPERSONATE_OPTIONS)
+        session = cf_requests.Session(impersonate=impersonate)
+        if sum(1 for _ in session.cookies) == 0:
+            try:
+                session.get("https://www.leboncoin.fr/", timeout=15)
+                time.sleep(0.5)
+            except Exception:
+                pass
+        ad = fetch_ad_by_id(session, args.ad_id)
+        if not ad:
+            print(json.dumps({"error": "Annonce introuvable ou API indisponible"}), file=sys.stderr)
+            sys.exit(1)
+        normalized = normalize_ad(ad, "buy", None)
+        if not normalized:
+            print(json.dumps({"error": "Données d'annonce invalides"}), file=sys.stderr)
+            sys.exit(1)
+        # Output for parse-url API: flat dict with keys expected by frontend
+        out = {
+            "title": normalized.get("title"),
+            "price": normalized.get("price"),
+            "surface": normalized.get("surface"),
+            "rooms": normalized.get("rooms"),
+            "city": normalized.get("city"),
+            "postalCode": normalized.get("postalCode"),
+            "url": normalized.get("url"),
+            "description": normalized.get("description"),
+            "source": "LeBonCoin",
+        }
+        print(json.dumps(out, ensure_ascii=False))
+        sys.exit(0)
 
     # Automatically adapt if they passed output pointing to json
     db_path = args.db
