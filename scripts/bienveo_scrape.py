@@ -243,9 +243,13 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
 
     data = src.get("data", {})
 
-    surface_val = _get_data(data, "surface_habitable")
+    # For buy: prefer surface_carrez (loi Carrez), fallback to surface_habitable
+    if listing_type == "buy":
+        surface_val = _get_data(data, "surface_carrez") or _get_data(data, "surface_habitable")
+    else:
+        surface_val = _get_data(data, "surface_habitable")
     if surface_val is None:
-        surface_val = _get_data(data, "surface")  # fallback
+        surface_val = _get_data(data, "surface")  # last resort
     surface = float(surface_val) if surface_val is not None else None
 
     rooms_val = _get_data(data, "nb_pieces_logement")
@@ -304,9 +308,17 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
     energy_heating = str(_get_data(data, "chauffage_energie") or "").strip() or None
     heating_type = str(_get_data(data, "chauffage_type") or "").strip() or None
 
-    # For HLM rent listings, yield/cashflow cannot be computed (no sale price)
-    estimated_yield = None
-    estimated_cashflow = None
+    # For buy listings: compute estimated yield/cashflow (same formula as lbc_scrape.py)
+    if listing_type == "buy" and price and price > 0 and surface and surface > 0:
+        ppsqm = price / surface
+        y = 10.5 - (ppsqm / 1000)
+        y = max(3.0, min(10.0, y))
+        cf = (price * (y / 100) * 0.7 - (price * 1.08 * 0.073)) / 12
+        estimated_yield = round(y * 10) / 10
+        estimated_cashflow = round(cf)
+    else:
+        estimated_yield = None
+        estimated_cashflow = None
 
     price_per_sqm = round(price / surface) if surface and price and surface > 0 else None
 
@@ -359,8 +371,8 @@ def main():
     parser.add_argument("--kind", default="both", choices=["apartment", "house", "both"],
                         help="Property kind (default: both)")
     parser.add_argument("--limit", type=int, default=200, help="Max listings to fetch")
-    parser.add_argument("--type", default="rent", choices=["rent", "buy"],
-                        help="Listing type: rent (location) or buy (vente). Default: rent")
+    parser.add_argument("--type", default="buy", choices=["rent", "buy"],
+                        help="Listing type: rent (location) or buy (vente). Default: buy")
     parser.add_argument("--db", default="data/properties.db", help="SQLite output DB")
     args = parser.parse_args()
 

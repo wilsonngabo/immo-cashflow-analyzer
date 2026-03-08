@@ -120,7 +120,7 @@ async function scrapeLeBonCoin(params: ScrapeRequest): Promise<ScrapeResult> {
 async function scrapeBienveo(params: ScrapeRequest): Promise<ScrapeResult> {
     const args = [
         BIENVEO_SCRIPT_PATH,
-        '--type', params.listingType ?? 'rent',
+        '--type', params.listingType ?? 'buy',
         '--kind', params.propertyKind === 'apartment' ? 'apartment'
             : params.propertyKind === 'house' ? 'house' : 'both',
         '--limit', String(Math.min(params.limit ?? 200, 10000)),
