@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { promises as fs } from 'fs';
 import path from 'path';
 
 const execFileAsync = promisify(execFile);
 const DB_PATH = path.join(process.cwd(), 'data', 'properties.json');
 const SCRIPT_PATH = path.join(process.cwd(), 'scripts', 'lbc_scrape.py');
+const BIENVEO_SCRIPT_PATH = path.join(process.cwd(), 'scripts', 'bienveo_scrape.py');
 
 interface ScrapeRequest {
     city?: string;
@@ -115,6 +115,57 @@ async function scrapeLeBonCoin(params: ScrapeRequest): Promise<ScrapeResult> {
     }
 }
 
+// ─── Bienveo scraper (via curl_cffi + __NEXT_DATA__) ─────────────────────────
+
+async function scrapeBienveo(params: ScrapeRequest): Promise<ScrapeResult> {
+    const args = [
+        BIENVEO_SCRIPT_PATH,
+        '--type', params.listingType ?? 'rent',
+        '--kind', params.propertyKind === 'apartment' ? 'apartment'
+            : params.propertyKind === 'house' ? 'house' : 'both',
+        '--limit', String(Math.min(params.limit ?? 200, 10000)),
+        '--db', DB_PATH.replace('.json', '.db'),
+    ];
+    if (params.city) args.push('--city', params.city);
+
+    try {
+        const winPythonPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe');
+        let python = 'python3';
+        try {
+            await execFileAsync(winPythonPath, ['--version'], { timeout: 3000 });
+            python = winPythonPath;
+        } catch {
+            try {
+                await execFileAsync('python3', ['--version'], { timeout: 3000 });
+                python = 'python3';
+            } catch {
+                python = 'python';
+            }
+        }
+
+        const { stdout, stderr } = await execFileAsync(python, args, {
+            timeout: 120_000, // 2 min max (bienveo is slower due to HTML scraping)
+            cwd: process.cwd(),
+        });
+
+        if (stderr) console.log('[bienveo_scrape stderr]', stderr.slice(-500));
+
+        const result = JSON.parse(stdout.trim());
+        if (result.error) return { source: 'bienveo', count: 0, error: result.error };
+        return { source: 'bienveo', count: result.count ?? 0 };
+
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('ENOENT') || msg.includes('not found')) {
+            return { source: 'bienveo', count: 0, error: 'Python non trouvé. Installez Python 3.9+ et lancez: pip install curl_cffi' };
+        }
+        if (msg.includes('curl_cffi')) {
+            return { source: 'bienveo', count: 0, error: 'Dépendance manquante. Lancez: pip install curl_cffi' };
+        }
+        return { source: 'bienveo', count: 0, error: msg.slice(0, 200) };
+    }
+}
+
 // ─── POST — trigger scrape ────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -129,7 +180,11 @@ export async function POST(request: Request) {
             results.push(result);
             totalNew += result.count ?? 0;
         }
-        // SeLoger/Bienveo could be called here via subprocess or fetch to internal scripts if needed
+        if (sources.includes('bienveo')) {
+            const result = await scrapeBienveo(params);
+            results.push(result);
+            totalNew += result.count ?? 0;
+        }
 
         const totalCount = await getDBCount();
 

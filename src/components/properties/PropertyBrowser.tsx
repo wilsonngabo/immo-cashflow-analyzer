@@ -336,7 +336,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             {stats && stats.total > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                        { label: 'Total annonces', value: stats.total, sub: `LBC: ${stats.bySources.leboncoin} / SL: ${stats.bySources.seloger}` },
+                        { label: 'Total annonces', value: stats.total, sub: `LBC: ${stats.bySources.leboncoin} / SL: ${stats.bySources.seloger} / BIE: ${stats.bySources.bienveo ?? 0}` },
                         { label: 'Prix moyen', value: fmtPrice(stats.avgPrice), sub: 'Toutes villes' },
                         { label: 'Surface moyenne', value: `${stats.avgSurface} m²`, sub: 'Annonces avec surface' },
                         { label: 'Prix/m² moyen', value: `${stats.avgPricePerSqm.toLocaleString('fr-FR')} €/m²`, sub: 'Annonces calculables' },
@@ -438,6 +438,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                 <SelectItem value="all">Toutes</SelectItem>
                                 <SelectItem value="leboncoin">LeBonCoin</SelectItem>
                                 <SelectItem value="seloger">SeLoger</SelectItem>
+                                <SelectItem value="bienveo">Bienveo</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
