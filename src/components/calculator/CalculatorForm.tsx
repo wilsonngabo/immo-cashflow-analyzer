@@ -23,9 +23,11 @@ interface CalculatorFormProps {
     mode: string;
     onDataChange: (newData: InvestmentData) => void;
     onModeChange: (newMode: string) => void;
+    /** Estimation de loyer marché depuis les annonces LBC location en base */
+    rentMarket?: { median: number; count: number } | null;
 }
 
-export function CalculatorForm({ data, mode, onDataChange, onModeChange }: CalculatorFormProps) {
+export function CalculatorForm({ data, mode, onDataChange, onModeChange, rentMarket }: CalculatorFormProps) {
     const [isOpenAcq, setIsOpenAcq] = useState(true);
     const [isOpenFin, setIsOpenFin] = useState(true);
     const [isOpenExp, setIsOpenExp] = useState(true);
@@ -463,6 +465,21 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                                 value={data.monthlyRent ?? ''}
                                 onChange={(e) => handleChange('monthlyRent', parseFloat(e.target.value) || 0)}
                             />
+                            {rentMarket && rentMarket.count >= 3 && (
+                                <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1 flex items-center gap-1">
+                                    <span>📊</span>
+                                    <span>Marché locatif LBC : <strong>{rentMarket.median} €/mois</strong> médiane ({rentMarket.count} annonces similaires)</span>
+                                    {data.monthlyRent !== rentMarket.median && (
+                                        <button
+                                            type="button"
+                                            className="ml-auto text-[10px] underline text-emerald-600 hover:text-emerald-800 whitespace-nowrap"
+                                            onClick={() => onDataChange({ ...data, monthlyRent: rentMarket.median })}
+                                        >
+                                            Appliquer
+                                        </button>
+                                    )}
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label>Taxe Foncière /an (€)</Label>
@@ -497,16 +514,49 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange }: Calcu
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3">
-                        <div>
-                            <Label className="text-sm font-medium">Simulation en colocation</Label>
-                            <p className="text-xs text-slate-500 mt-0.5">Loyer × 1,28 (estimation loyer par chambre)</p>
-                        </div>
-                        <Switch
-                            checked={!!data.simulationColoc}
-                            onCheckedChange={(checked) => handleChange('simulationColoc', checked)}
-                        />
-                    </div>
+                    {(() => {
+                        const nbChambres = data.bedrooms && data.bedrooms > 0 ? data.bedrooms : (data.rooms && data.rooms > 1 ? data.rooms - 1 : 0);
+                        return (
+                            <>
+                                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3">
+                                    <div>
+                                        <Label className="text-sm font-medium">Simulation en colocation</Label>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            {data.simulationColoc
+                                                ? <>Loyer coloc estimé : <span className="font-semibold text-emerald-600">{Math.round(data.monthlyRent * 1.28)} €/mois</span> (loyer × 1,28)</>
+                                                : 'Applique × 1,28 sur le loyer de base (si loyer exact inconnu)'}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={!!data.simulationColoc}
+                                        onCheckedChange={(checked) => handleChange('simulationColoc', checked)}
+                                    />
+                                </div>
+                                {nbChambres > 0 && (
+                                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 px-4 py-3 space-y-2">
+                                        <Label className="text-xs font-medium text-emerald-700">
+                                            Loyer par chambre — {nbChambres} chambre{nbChambres > 1 ? 's' : ''} <span className="text-emerald-500 font-normal">(remplace le loyer de base)</span>
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                className="w-28 h-8 text-sm"
+                                                value={Math.round(data.monthlyRent / nbChambres)}
+                                                onChange={(e) => {
+                                                    const perRoom = parseFloat(e.target.value) || 0;
+                                                    // Le loyer par chambre EST le loyer coloc final, on désactive le ×1,28
+                                                    onDataChange({ ...data, monthlyRent: perRoom * nbChambres, simulationColoc: false });
+                                                }}
+                                            />
+                                            <span className="text-xs text-slate-500">
+                                                €/ch × {nbChambres} = <span className="font-semibold text-emerald-700">{data.monthlyRent} €/mois</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        );
+                    })()}
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">

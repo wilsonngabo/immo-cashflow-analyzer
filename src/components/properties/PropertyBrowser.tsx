@@ -18,7 +18,7 @@ import { Property, InvestmentData } from '@/lib/types';
 import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxRegimeFinancials } from '@/lib/calculations/annonces';
 
 interface PropertyBrowserProps {
-    onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string }) => void;
+    onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string; rentMarketInfo?: { median: number; count: number } | null }) => void;
 }
 
 interface DBStats {
@@ -278,24 +278,49 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     }, [properties]);
 
 
-    const handleAnalyze = (p: Property) => {
+    const handleAnalyze = async (p: Property) => {
         if (isLoaded && profile && p.listingType === 'buy' && p.price > 0) {
             const data = buildInvestmentDataFromProperty(p, profile);
             const { bestMode } = getBestTaxRegimeFinancials(p, profile);
+
+            // Fetch market rent from LBC location listings stored in DB
+            let marketRent: number | null = null;
+            let rentMarketInfo: { median: number; count: number } | null = null;
+            if (p.postalCode) {
+                try {
+                    const params = new URLSearchParams({ postalCode: p.postalCode });
+                    if (p.surface)   params.set('surface',   String(p.surface));
+                    if (p.rooms)     params.set('rooms',     String(p.rooms));
+                    if (p.bedrooms)  params.set('bedrooms',  String(p.bedrooms));
+                    const res  = await fetch(`/api/rent-estimate?${params}`);
+                    const json = await res.json();
+                    if (json.count >= 3 && json.medianRent) {
+                        marketRent = json.medianRent;
+                        rentMarketInfo = { median: json.medianRent, count: json.count };
+                    }
+                } catch { /* ignore — fall back to yield-based estimate */ }
+            }
+
             onAnalyze({
                 price: data.price,
                 surface: data.surface,
                 loanAmount: data.loanAmount,
                 notaryFees: data.notaryFees,
-                monthlyRent: data.monthlyRent,
+                monthlyRent: marketRent ?? data.monthlyRent,
                 propertyType: data.propertyType,
+                zone: data.zone,
+                postalCode: p.postalCode,
                 propertyTax: data.propertyTax,
                 condoFees: data.condoFees,
                 pnoInsurance: data.pnoInsurance,
                 personalContribution: data.personalContribution,
                 interestRate: data.interestRate,
                 loanDuration: data.loanDuration,
-            }, { fiscalMode: bestMode });
+                rooms: p.rooms,
+                bedrooms: p.bedrooms,
+                imageUrl: p.imageUrl,
+                listingUrl: p.url,
+            }, { fiscalMode: bestMode, rentMarketInfo });
         } else {
             const monthlyRent = p.estimatedYield != null
                 ? Math.round((p.price * p.estimatedYield / 100) / 12)
@@ -305,7 +330,8 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                 surface: p.surface ?? 0,
                 loanAmount: p.price,
                 monthlyRent,
-                propertyType: 'OLD',
+                postalCode: p.postalCode,
+                propertyType: p.source === 'bienveo' ? 'HLM' : 'OLD',
             });
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -531,15 +557,11 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                 )}
 
                                 <CardContent className="flex-1 flex flex-col p-4">
-                                    <div className="flex justify-between items-start mb-1.5">
-                                        <div className="flex flex-wrap gap-1 items-center">
-                                            {sourceBadge(p.source)}
-                                            {p.ownerType === 'professional' && <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-medium">Pro</span>}
-                                            {p.ownerType === 'private' && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">Particulier</span>}
-                                        </div>
-                                        <span className="text-[10px] text-slate-400">
-                                            {p.listingType === 'buy' ? 'Achat' : 'Location'}
-                                        </span>
+                                    <div className="flex flex-wrap gap-1 items-center mb-1.5">
+                                        {sourceBadge(p.source)}
+                                        {p.source === 'bienveo' && <span className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded-full font-medium">HLM</span>}
+                                        {p.ownerType === 'professional' && p.source !== 'bienveo' && <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-medium">Pro</span>}
+                                        {p.ownerType === 'private' && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">Particulier</span>}
                                     </div>
 
                                     <p className="text-xs font-medium text-slate-700 line-clamp-2 mb-1.5 flex-1">

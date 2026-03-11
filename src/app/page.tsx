@@ -2,19 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useProfile } from '@/hooks/useProfile';
-import { LocationSearch } from '@/components/location/LocationSearch';
 import { CalculatorForm } from '@/components/calculator/CalculatorForm';
 import { FiscalModeSelector } from '@/components/calculator/FiscalModeSelector';
 import { FinancialResultsDisplay } from '@/components/calculator/FinancialResultsDisplay';
 import { UrlImporter } from '@/components/importer/UrlImporter';
 import { ComparisonDashboard } from '@/components/calculator/ComparisonDashboard';
 import { PropertyBrowser } from '@/components/properties/PropertyBrowser';
-import { MarketContext } from '@/components/location/MarketContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Building2, TrendingUp, Wallet, Save, FileText, User, ArrowLeft } from 'lucide-react';
+import { Building2, Wallet, Save, FileText, User, ArrowLeft, ExternalLink } from 'lucide-react';
 import { FinancialProjectionChart } from '@/components/calculator/FinancialProjectionChart';
 import { PrintReport } from '@/components/calculator/PrintReport';
 import { SensitivityPanel } from '@/components/calculator/SensitivityPanel';
@@ -46,7 +43,7 @@ const DEFAULT_DATA: InvestmentData = {
   loanAmount: 150000,
   personalContribution: 0,
   interestRate: 3.8,
-  loanDuration: 20,
+  loanDuration: 25,
   insuranceRate: 0.34,
   monthlyRent: 800,
   propertyTax: 800,
@@ -62,9 +59,9 @@ const DEFAULT_DATA: InvestmentData = {
 
 export default function Home() {
   const { profile, isLoaded: profileLoaded } = useProfile();
-  const [selectedCity, setSelectedCity] = useState<any>(null);
   const [data, setData] = useState<InvestmentData>(DEFAULT_DATA);
   const [mode, setMode] = useState('LMNP_MICRO');
+  const [rentMarket, setRentMarket] = useState<{ median: number; count: number } | null>(null);
   const [results, setResults] = useState<FinancialResults>(INITIAL_RESULTS);
   const [allResults, setAllResults] = useState<Record<string, FinancialResults>>({});
   const [simulations, setSimulations] = useState<SavedSimulation[]>([]);
@@ -158,7 +155,7 @@ export default function Home() {
     const newSim: SavedSimulation = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
-      name: selectedCity ? `${selectedCity.nom} (${data.surface}m²)` : `Projet ${simulations.length + 1}`,
+      name: data.listingUrl ? `${data.price?.toLocaleString('fr-FR')} € (${data.surface}m²)` : `Projet ${simulations.length + 1}`,
       data: { ...data },
       results: { ...results },
       score
@@ -224,6 +221,7 @@ export default function Home() {
               onAnalyze={(partial, options) => {
                 handleImport(partial);
                 if (options?.fiscalMode) setMode(options.fiscalMode);
+                if (options?.rentMarketInfo !== undefined) setRentMarket(options.rentMarketInfo ?? null);
                 setActiveView('calculator');
               }}
             />
@@ -239,68 +237,41 @@ export default function Home() {
                   <ArrowLeft className="w-4 h-4" /> Retour aux annonces
                 </Button>
               </div>
-              {/* Top Section: Location & Quick Stats */}
-              <div className="grid gap-6 md:grid-cols-12 mb-8">
-                <div className="md:col-span-8 lg:col-span-9">
-                  <div className="space-y-4">
-                    {/* Importer */}
-                    <UrlImporter onDataImported={handleImport} />
-
-                    <Card className="border-none shadow-md bg-white/50 backdrop-blur-sm">
-                      <CardHeader className="pb-3">
-                        <CardTitle>Localisation du bien</CardTitle>
-                        <CardDescription>Recherchez la commune pour récupérer les indicateurs de marché.</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <LocationSearch onSelect={(city) => setSelectedCity(city)} />
-                        {selectedCity && (
-                          <div className="mt-4 space-y-4">
-                            <div className="p-4 bg-blue-50 text-blue-700 rounded-md border border-blue-100 text-sm">
-                              📍 Sélectionné : <strong>{selectedCity.nom}</strong> ({selectedCity.codesPostaux[0]})
-                            </div>
-
-                            {/* Market Context Integration */}
-                            {(data.surface > 0) ? (
-                              <MarketContext
-                                city={selectedCity}
-                                userPricePerSqm={data.price / data.surface}
-                                onApplyEstimates={(estimates) => {
-                                  const newPrice = estimates.price * data.surface;
-                                  const newRent = estimates.rent * data.surface;
-                                  let newLoan = data.loanAmount;
-                                  if (Math.abs(data.loanAmount - data.price) < 1000) {
-                                    newLoan = newPrice;
-                                  }
-
-                                  setData({
-                                    ...data,
-                                    price: Math.round(newPrice),
-                                    monthlyRent: Math.round(newRent),
-                                    loanAmount: Math.round(newLoan)
-                                  });
-                                }}
-                              />
-                            ) : (
-                              <div className="text-xs text-slate-400 italic">Renseignez la surface pour voir l'analyse du marché.</div>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+              {/* Property banner — shown when coming from a listing */}
+              {(data.imageUrl || data.listingUrl) && (
+                <div className="flex items-center gap-4 mb-4 p-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+                  {data.imageUrl && (
+                    <img
+                      src={data.imageUrl}
+                      alt="Photo du bien"
+                      className="w-24 h-20 object-cover rounded-lg flex-shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-500 mb-1">Annonce importée</p>
+                    {data.listingUrl && (
+                      <a
+                        href={data.listingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline truncate max-w-full"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{data.listingUrl.replace(/^https?:\/\//, '')}</span>
+                      </a>
+                    )}
+                    <p className="text-xs text-slate-400 mt-1">
+                      {data.price ? `${data.price.toLocaleString('fr-FR')} €` : ''}
+                      {data.surface ? ` · ${data.surface} m²` : ''}
+                      {data.rooms ? ` · ${data.rooms} pièces` : ''}
+                    </p>
                   </div>
                 </div>
+              )}
 
-                <div className="md:col-span-4 lg:col-span-3">
-                  <Card className="h-full bg-slate-900 text-white border-none shadow-xl">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Taux Moyen</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold">3.85%</div>
-                      <p className="text-sm text-slate-400">Sur 20 ans</p>
-                    </CardContent>
-                  </Card>
-                </div>
+              {/* Importer */}
+              <div className="mb-6">
+                <UrlImporter onDataImported={handleImport} />
               </div>
 
               {/* Main Content Area */}
@@ -319,6 +290,7 @@ export default function Home() {
                         mode={mode}
                         onDataChange={setData}
                         onModeChange={setMode}
+                        rentMarket={rentMarket}
                       />
                     </CardContent>
                   </Card>
@@ -380,7 +352,7 @@ export default function Home() {
       </div >
 
       {/* Print Report */}
-      < PrintReport data={data} results={results} city={selectedCity} />
+      <PrintReport data={data} results={results} />
     </>
   );
 }

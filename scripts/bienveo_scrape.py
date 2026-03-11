@@ -220,6 +220,245 @@ def _bool_data(data_dict: dict, *keys: str) -> bool:
     return False
 
 
+def extract_fields_from_description(description: str) -> dict:
+    """
+    Intelligent extraction of property fields from free-text description.
+    Returns a dict with any fields found; missing fields are absent from the dict.
+
+    Fields extracted:
+      charges       float  monthly condo fees (€/mois)
+      property_tax  float  annual taxe foncière (€/an)
+      dpe           str    energy label A-G
+      ges           str    GES label A-G
+      floor         int    étage (0 = RdC)
+      built_year    int    année de construction
+      terrain       float  surface terrain m² (maisons)
+      has_elevator  bool
+      has_balcony   bool
+      has_parking   bool
+      has_cellar    bool
+      is_furnished  bool
+      heating_type  str    'Individuel' | 'Collectif'
+      energy_heating str   'Électrique' | 'Gaz' | 'Fioul' | …
+      bedrooms      int
+      rooms         int
+    """
+    result = {}
+    if not description:
+        return result
+
+    # Normalize: NFKD then strip combining chars (diacritics) → plain ASCII letters
+    # e.g. "copropriété" → "copropriete", "énergie" → "energie"
+    text = unicodedata.normalize("NFKD", description.lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = text.replace("\u202f", " ").replace("\xa0", " ")
+
+    num = r"(\d[\d\s]{0,5}\d|\d+)"          # e.g. "1 200" or "1200"
+    eur = r"\s*(?:€|euros?)"
+    ws  = r"[\s:=\-–]{0,4}"                 # optional separator
+
+    def to_float(s: str) -> float:
+        return float(re.sub(r"\s", "", s))
+
+    # ── Charges de copropriété (monthly) ──────────────────────────────────────
+    monthly_charge_pats = [
+        rf"charges?\s+(?:de\s+copropriete|copro|mensuelles?|locatives?)\s*[:\-=]?\s*{num}{eur}(?:\s*/\s*mois)?",
+        rf"charges?\s*[:\-=]\s*{num}{eur}(?:\s*/\s*mois)?",
+        rf"provision(?:\s+sur)?\s+charges?\s*[:\-=]?\s*{num}{eur}(?:\s*/\s*mois)?",
+        rf"{num}{eur}\s*/\s*mois\s+de\s+charges?",
+    ]
+    annual_charge_pats = [
+        rf"charges?\s[a-z\s()'/]{{0,40}}(?:annuelles?|/an)\s*[:\-=]?\s*{num}{eur}",
+        rf"charges?\s*[:\-=]\s*{num}{eur}\s*/\s*an",
+        rf"{num}{eur}\s*/\s*an\s+de\s+charges?",
+    ]
+    for pat in monthly_charge_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = to_float(m.group(1))
+                if 10 <= v <= 2000:
+                    result["charges"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+    if "charges" not in result:
+        for pat in annual_charge_pats:
+            m = re.search(pat, text)
+            if m:
+                try:
+                    v = round(to_float(m.group(1)) / 12, 2)
+                    if 10 <= v <= 2000:
+                        result["charges"] = v
+                        break
+                except (ValueError, IndexError):
+                    pass
+
+    # ── Taxe foncière (annual) ────────────────────────────────────────────────
+    tf_pats = [
+        rf"taxe\s+fonciere\s*[:\-=]?\s*(?:de\s+)?{num}{eur}",
+        rf"\btf\s*[:\-=]\s*{num}{eur}",
+        rf"{num}{eur}\s+(?:de\s+)?taxe\s+fonciere",
+    ]
+    for pat in tf_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = to_float(m.group(1))
+                if 50 <= v <= 50000:
+                    result["property_tax"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+
+    # ── DPE / GES labels (A–G) ────────────────────────────────────────────────
+    dpe_pats = [
+        r"dpe\s*[:\-=]\s*([a-g])\b",
+        r"classe\s+(?:energetique|dpe)\s*[:\-=]?\s*([a-g])\b",
+        r"etiquette\s+(?:energie|dpe)\s*[:\-=]?\s*([a-g])\b",
+        r"\bdpe\s+([a-g])\b",
+        r"performance\s+energetique\s*[:\-=]?\s*([a-g])\b",
+    ]
+    for pat in dpe_pats:
+        m = re.search(pat, text)
+        if m:
+            result["dpe"] = m.group(1).upper()
+            break
+
+    ges_pats = [
+        r"ges\s*[:\-=]\s*([a-g])\b",
+        r"emissions?\s+(?:de\s+)?ges\s*[:\-=]?\s*([a-g])\b",
+        r"classe\s+ges\s*[:\-=]?\s*([a-g])\b",
+        r"\bges\s+([a-g])\b",
+    ]
+    for pat in ges_pats:
+        m = re.search(pat, text)
+        if m:
+            result["ges"] = m.group(1).upper()
+            break
+
+    # ── Étage ─────────────────────────────────────────────────────────────────
+    if re.search(r"rez[\s\-]de[\s\-]chaussee", text):
+        result["floor"] = 0
+    else:
+        floor_pats = [
+            r"(\d+)(?:[eè]me?|er|ième?)\s+[eé]tage",
+            r"[eé]tage\s*[:\-=]\s*(\d+)",
+            r"au\s+(\d+)(?:[eè]me?|er|ième?)?\s+[eé]tage",
+        ]
+        for pat in floor_pats:
+            m = re.search(pat, text)
+            if m:
+                try:
+                    v = int(m.group(1))
+                    if 0 <= v <= 50:
+                        result["floor"] = v
+                        break
+                except (ValueError, IndexError):
+                    pass
+
+    # ── Année de construction ─────────────────────────────────────────────────
+    built_pats = [
+        r"construit(?:e)?\s+en\s+((?:19|20)\d{2})\b",
+        r"construction\s+(?:de|en|:)\s*((?:19|20)\d{2})\b",
+        r"annee\s+de\s+construction\s*[:\-=]\s*((?:19|20)\d{2})\b",
+        r"bati(?:ment)?\s+(?:de|en|datant\s+de)\s*((?:19|20)\d{2})\b",
+        r"renove?\s+en\s+((?:19|20)\d{2})\b",
+    ]
+    for pat in built_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = int(m.group(1))
+                if 1800 <= v <= 2030:
+                    result["built_year"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+
+    # ── Surface terrain ───────────────────────────────────────────────────────
+    terrain_pats = [
+        rf"terrain\s*(?:de\s+)?{num}\s*m[²2]",
+        rf"{num}\s*m[²2]\s+de\s+terrain",
+        rf"jardin\s*(?:de\s+)?{num}\s*m[²2]",
+    ]
+    for pat in terrain_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = to_float(m.group(1))
+                if 5 <= v <= 100000:
+                    result["terrain"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+
+    # ── Boolean amenities ─────────────────────────────────────────────────────
+    if re.search(r"\bascenseur\b", text):
+        result["has_elevator"] = True
+    if re.search(r"\b(?:balcon|terrasse|loggia)\b", text):
+        result["has_balcony"] = True
+    if re.search(r"\b(?:garage|parking|stationnement|box)\b", text):
+        result["has_parking"] = True
+    if re.search(r"\bcave\b", text):
+        result["has_cellar"] = True
+    if re.search(r"\b(?:meubl[eé]|[eé]quip[eé])\b", text):
+        result["is_furnished"] = True
+
+    # ── Chauffage type ────────────────────────────────────────────────────────
+    if re.search(r"chauffage\s+(?:urbain|collectif|central)", text):
+        result["heating_type"] = "Collectif"
+    elif re.search(r"chauffage\s+individuel", text):
+        result["heating_type"] = "Individuel"
+
+    energy_map = [
+        ("Électrique",      r"chauffage\s+electrique|\belectrique\b"),
+        ("Gaz",             r"chauffage\s+(?:au\s+)?gaz|\bau\s+gaz\b"),
+        ("Fioul",           r"chauffage\s+(?:au\s+)?fioul|\bfioul\b"),
+        ("Pompe à chaleur", r"pompe\s+a\s+chaleur|\bpac\b"),
+        ("Géothermie",      r"geothermie"),
+        ("Bois",            r"chauffage\s+(?:au\s+)?bois|\bpoele\b"),
+    ]
+    for label, pat in energy_map:
+        if re.search(pat, text):
+            result["energy_heating"] = label
+            break
+
+    # ── Nb chambres ───────────────────────────────────────────────────────────
+    bedroom_pats = [
+        r"(\d+)\s+chambre[s]?\b",
+        r"chambre[s]?\s*[:\-=]\s*(\d+)",
+    ]
+    for pat in bedroom_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = int(m.group(1))
+                if 1 <= v <= 20:
+                    result["bedrooms"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+
+    # ── Nb pièces ─────────────────────────────────────────────────────────────
+    rooms_pats = [
+        r"(\d+)\s+pi[eè]ces?\b",
+        r"\bt(\d)\b",   # T2, T3, T4…
+    ]
+    for pat in rooms_pats:
+        m = re.search(pat, text)
+        if m:
+            try:
+                v = int(m.group(1))
+                if 1 <= v <= 20:
+                    result["rooms"] = v
+                    break
+            except (ValueError, IndexError):
+                pass
+
+    return result
+
+
 def normalize_hit(hit: dict, listing_type: str) -> dict | None:
     """Convert a bienveo ES hit to our Property schema dict."""
     src = hit.get("_source", {})
@@ -289,7 +528,7 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
             image_url = first_pic.get("url") or first_pic.get("urlMini") or first_pic.get("path") or ""
     nb_photos = len(pictures) if isinstance(pictures, list) else 0
 
-    # Diagnostics
+    # Structured fields
     dpe = str(_get_data(data, "dpe_etiquette_conso") or "").strip() or None
     ges = str(_get_data(data, "dpe_etiquette_ges") or "").strip() or None
 
@@ -307,6 +546,30 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
 
     energy_heating = str(_get_data(data, "chauffage_energie") or "").strip() or None
     heating_type = str(_get_data(data, "chauffage_type") or "").strip() or None
+
+    property_tax = None  # not in structured data for bienveo
+    terrain = None
+    ex: dict = {}
+
+    # Intelligent extraction from description — fills in missing structured fields
+    description_text = src.get("description") or ""
+    if description_text:
+        ex = extract_fields_from_description(description_text)
+        if charges    is None: charges       = ex.get("charges")
+        if property_tax is None: property_tax = ex.get("property_tax")
+        if dpe        is None: dpe           = ex.get("dpe")
+        if ges        is None: ges           = ex.get("ges")
+        if floor      is None: floor         = ex.get("floor")
+        if terrain    is None: terrain       = ex.get("terrain")
+        if not has_elevator:   has_elevator  = ex.get("has_elevator", False)
+        if not has_balcony:    has_balcony   = ex.get("has_balcony", False)
+        if not has_parking:    has_parking   = ex.get("has_parking", False)
+        if not has_cellar:     has_cellar    = ex.get("has_cellar", False)
+        if not is_furnished:   is_furnished  = ex.get("is_furnished", False)
+        if heating_type    is None: heating_type    = ex.get("heating_type")
+        if energy_heating  is None: energy_heating  = ex.get("energy_heating")
+        if bedrooms        is None: bedrooms        = ex.get("bedrooms")
+        if rooms           is None: rooms           = ex.get("rooms")
 
     # For buy listings: compute estimated yield/cashflow (same formula as lbc_scrape.py)
     if listing_type == "buy" and price and price > 0 and surface and surface > 0:
@@ -345,8 +608,8 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
         "hasElevator": has_elevator,
         "hasBalcony": has_balcony,
         "hasParking": has_parking,
-        "builtYear": None,
-        "propertyTax": None,
+        "builtYear": ex.get("built_year") if description_text else None,
+        "propertyTax": property_tax,
         "isNew": False,
         "energyHeating": energy_heating,
         "heatingType": heating_type.title() if heating_type else None,
@@ -354,7 +617,7 @@ def normalize_hit(hit: dict, listing_type: str) -> dict | None:
         "isFurnished": is_furnished,
         "hasCellar": has_cellar,
         "hasGarage": has_parking,
-        "terrain": None,
+        "terrain": terrain,
         "nbPhotos": nb_photos,
         "ownerType": "professional",  # all bienveo advertisers are social landlords (bailleurs sociaux)
         "estimatedYield": estimated_yield,

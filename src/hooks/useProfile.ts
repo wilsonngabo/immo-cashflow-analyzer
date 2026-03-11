@@ -15,7 +15,7 @@ export interface UserProfile {
 const DEFAULT_PROFILE: UserProfile = {
     annualSalary: 0,
     personalContribution: 0,
-    defaultLoanDuration: 20,
+    defaultLoanDuration: 25,
     defaultInterestRate: 3.8,
     targetYieldMin: 6,
     targetCashflowMin: 0,

@@ -113,7 +113,8 @@ export async function GET(request: Request) {
                 // Optimisation : filtre par colonne region (index) si disponible
                 conditions.push('(region = ? OR (region IS NULL AND ' + DEPT_FROM_POSTAL_SQL + ' IN (' + (REGIONS[regionName]?.map(() => '?') ?? []).join(',') + ')))');
                 params.push(regionName, ...(REGIONS[regionName] ?? []));
-            } else if (department && department !== 'all') {
+            }
+            if (department && department !== 'all') {
                 conditions.push(`${DEPT_FROM_POSTAL_SQL} = ?`);
                 params.push(department);
             }

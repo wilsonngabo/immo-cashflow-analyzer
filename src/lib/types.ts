@@ -41,6 +41,16 @@ export interface InvestmentData {
     heatingType?: 'INDIVIDUAL' | 'COLLECTIVE'; // Chauffage individuel vs collectif
     /** Si true, la simulation utilise un loyer colocation (loyer × 1,28) pour les revenus */
     simulationColoc?: boolean;
+    /** Nombre de pièces de l'annonce (pour calcul loyer/chambre en coloc) */
+    rooms?: number;
+    /** Nombre de chambres de l'annonce (pour calcul loyer/chambre en coloc) */
+    bedrooms?: number;
+    /** URL de l'image principale de l'annonce */
+    imageUrl?: string;
+    /** URL de l'annonce source */
+    listingUrl?: string;
+    /** Code postal (pour estimation loyer marché depuis annonces LBC location) */
+    postalCode?: string;
 }
 
 export interface SavedSimulation {

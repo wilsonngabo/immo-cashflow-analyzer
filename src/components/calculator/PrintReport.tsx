@@ -22,7 +22,7 @@ export function PrintReport({ data, results, city }: PrintReportProps) {
                 </div>
                 <div className="text-right">
                     <div className="text-xl font-semibold">{city ? city.nom : 'Projet Immobilier'}</div>
-                    <div className="text-sm text-slate-500">{new Date().toLocaleDateString()}</div>
+                    <div className="text-sm text-slate-500" suppressHydrationWarning>{new Date().toLocaleDateString()}</div>
                 </div>
             </div>
 

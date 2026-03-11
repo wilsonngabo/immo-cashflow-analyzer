@@ -1,6 +1,7 @@
-import { Property, InvestmentData } from '@/lib/types';
+import { Property, InvestmentData, PropertyType } from '@/lib/types';
 import type { UserProfile } from '@/hooks/useProfile';
 import { calculateFinancials, calculateNotaryFees, calculateAllFiscalModes } from './financials';
+import { getZoneFromPostalCode } from '@/lib/geography';
 
 /**
  * En colocation, le loyer total est souvent 25 à 35 % plus élevé (loyer par chambre).
@@ -58,9 +59,14 @@ export function buildInvestmentDataFromProperty(
     const estimatedAnnualRent = (price * yieldBrutPct) / 100;
     const monthlyRent = estimatedAnnualRent / 12;
 
-    const notaryFees = calculateNotaryFees(price, 'OLD');
+    // Bienveo listings are always HLM (logements sociaux) → notary rate 3%
+    const propertyType: PropertyType = p.source === 'bienveo' ? 'HLM' : 'OLD';
+    const notaryFees = calculateNotaryFees(price, propertyType);
     const totalProject = price + notaryFees;
     const loanAmount = Math.max(0, totalProject - (profile.personalContribution ?? 0));
+
+    // Auto-compute PTZ zone from postal code
+    const zone = getZoneFromPostalCode(p.postalCode);
 
     return {
         price,
@@ -68,11 +74,13 @@ export function buildInvestmentDataFromProperty(
         furniture: 0,
         works: 0,
         notaryFees,
-        propertyType: 'OLD',
+        propertyType,
+        zone,
+        postalCode: p.postalCode,
         loanAmount: loanAmount || price,
         personalContribution: profile.personalContribution ?? 0,
         interestRate: profile.defaultInterestRate ?? 3.8,
-        loanDuration: profile.defaultLoanDuration ?? 20,
+        loanDuration: profile.defaultLoanDuration ?? 25,
         insuranceRate: 0.34,
         monthlyRent: Math.round(monthlyRent),
         propertyTax: p.propertyTax ?? Math.round(price * 0.008),

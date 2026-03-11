@@ -57,3 +57,65 @@ export function getRegionForDepartment(deptCode: string): string | undefined {
     }
     return undefined;
 }
+
+/**
+ * Returns PTZ zone (A, B1, B2, C) from a French postal code.
+ * Based on simplified department-level mapping (arrêté du 1er août 2014 et mises à jour).
+ * Zone A = Grand Paris | B1 = grandes agglomérations | B2 = agglomérations moyennes | C = reste
+ */
+export function getZoneFromPostalCode(postalCode?: string): 'A' | 'B1' | 'B2' | 'C' {
+    if (!postalCode) return 'B2';
+    const dept = getDepartmentCode(postalCode);
+    if (!dept) return 'B2';
+
+    // Zone A — Grand Paris (Île-de-France central)
+    const zoneA = ['75', '92', '93', '94'];
+
+    // Zone B1 — Grandes agglomérations + DOM-TOM
+    const zoneB1 = [
+        '06',  // Alpes-Maritimes (Nice, Cannes, Antibes)
+        '13',  // Bouches-du-Rhône (Marseille, Aix-en-Provence)
+        '31',  // Haute-Garonne (Toulouse)
+        '33',  // Gironde (Bordeaux)
+        '34',  // Hérault (Montpellier)
+        '35',  // Ille-et-Vilaine (Rennes)
+        '38',  // Isère (Grenoble)
+        '44',  // Loire-Atlantique (Nantes)
+        '57',  // Moselle (Metz)
+        '59',  // Nord (Lille)
+        '67',  // Bas-Rhin (Strasbourg)
+        '69',  // Rhône (Lyon)
+        '74',  // Haute-Savoie (Annecy, Thonon-les-Bains)
+        '76',  // Seine-Maritime (Rouen)
+        '77',  // Seine-et-Marne (couronne IDF)
+        '78',  // Yvelines (couronne IDF)
+        '83',  // Var (Toulon, Fréjus)
+        '84',  // Vaucluse (Avignon)
+        '91',  // Essonne (couronne IDF)
+        '95',  // Val-d'Oise (couronne IDF)
+        '971', // Guadeloupe
+        '972', // Martinique
+        '973', // Guyane
+        '974', // La Réunion
+        '976', // Mayotte
+    ];
+
+    // Zone B2 — Agglomérations moyennes (50k–250k hab.)
+    const zoneB2 = [
+        '01', '02', '03', '04', '05', '07', '08', '09',
+        '10', '11', '12', '14', '15', '16', '17', '18', '19',
+        '21', '22', '23', '24', '25', '26', '27', '28', '29',
+        '30', '32', '36', '37', '39',
+        '40', '41', '42', '43', '45', '46', '47', '48', '49',
+        '50', '51', '52', '53', '54', '55', '56', '58',
+        '60', '61', '62', '63', '64', '65', '66', '68',
+        '70', '71', '72', '73', '79',
+        '80', '81', '82', '85', '86', '87', '88', '89',
+        '90',
+    ];
+
+    if (zoneA.includes(dept)) return 'A';
+    if (zoneB1.includes(dept)) return 'B1';
+    if (zoneB2.includes(dept)) return 'B2';
+    return 'C'; // Corse (2A, 2B) et zones très rurales
+}
