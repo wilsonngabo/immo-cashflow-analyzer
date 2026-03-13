@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:sample": "HOSTNAME=0.0.0.0 next dev",
     "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
+    "start:sample": "HOSTNAME=0.0.0.0 next start",
     "lint": "eslint",
     "pipeline": "python scripts/pipeline.py",
     "pipeline:bienveo": "python scripts/pipeline.py --bienveo-only",
