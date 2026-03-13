@@ -3,42 +3,16 @@
  * - Starts the data pipeline once after 30s (so the server is ready).
  * - Then runs the pipeline every 24h.
  * The user does not need to click "Lancer la Pipeline" — it runs automatically.
+ * Node-only code is in instrumentation-node.ts to avoid Edge Runtime errors.
  */
 
 const DELAY_FIRST_RUN_MS = 30 * 1000;   // 30 seconds after server start
 const INTERVAL_DAILY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function getPythonPath(): string {
-  if (process.platform === 'win32') {
-    const winPath = require('path').join(
-      process.env.LOCALAPPDATA || '',
-      'Programs',
-      'Python',
-      'Python312',
-      'python.exe'
-    );
-    return winPath;
-  }
-  return 'python3';
-}
-
-function runPipeline(): void {
-  const path = require('path');
-  const { execFile } = require('child_process');
-  const scriptPath = path.join(process.cwd(), 'scripts', 'pipeline.py');
-  const python = getPythonPath();
-
-  execFile(python, [scriptPath], { cwd: process.cwd() }, (err: Error | null) => {
-    if (err) {
-      console.error('[Pipeline auto] Error:', err.message);
-      return;
-    }
-    console.log('[Pipeline auto] Run completed.');
-  });
-}
-
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  const { runPipeline } = await import('./instrumentation-node');
 
   // First run after delay so the server can start
   setTimeout(() => {

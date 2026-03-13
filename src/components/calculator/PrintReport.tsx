@@ -9,8 +9,8 @@ interface PrintReportProps {
 }
 
 export function PrintReport({ data, results, city }: PrintReportProps) {
-    // Helper to format currency
-    const f = (n: number) => Math.round(n).toLocaleString() + ' €';
+    // Helper to format currency (fixed locale to avoid hydration mismatch)
+    const f = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' €';
 
     return (
         <div className="hidden print:block font-sans p-8 text-black bg-white w-full max-w-[210mm] mx-auto">
