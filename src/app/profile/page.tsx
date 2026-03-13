@@ -36,19 +36,19 @@ export default function ProfilePage() {
     if (!isLoaded) return null;
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
-            <header className="border-b bg-white dark:bg-slate-900 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
+        <div className="min-h-screen bg-[#FDFCF9] dark:bg-[#141416] pb-20">
+            <header className="border-b border-black/5 dark:border-white/5 bg-[#FDFCF9]/98 dark:bg-[#141416]/98 backdrop-blur-md sticky top-0 z-10 px-8 py-6 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <div className="bg-primary/10 p-2 rounded-lg">
                         <User className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Mon Profil</h1>
-                        <p className="text-xs text-slate-500 font-medium">Préférences et paramètres d'investissement</p>
+                        <h1 className="text-xl font-semibold tracking-tight text-[#1a1a1a] dark:text-[#F5F3ED]" style={{ fontFamily: 'var(--font-heading), Cormorant Garamond, Georgia, serif' }}>Mon Profil</h1>
+                        <p className="text-xs text-[#1a1a1a]/55 dark:text-[#F5F3ED]/55">Préférences et paramètres d'investissement</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Link href="/">
+                    <Link href="/simulateur">
                         <Button variant="outline" size="sm" className="gap-2">
                             <Home className="w-4 h-4" /> Retour au Simulateur
                         </Button>

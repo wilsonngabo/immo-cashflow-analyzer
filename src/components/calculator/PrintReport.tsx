@@ -17,8 +17,8 @@ export function PrintReport({ data, results, city }: PrintReportProps) {
             {/* Header */}
             <div className="flex justify-between items-end border-b-2 border-slate-800 pb-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold uppercase tracking-widest">Dossier Bancaire</h1>
-                    <p className="text-sm text-slate-500 mt-1">Généré par ImmoCashFlow</p>
+                    <h1 className="text-3xl font-bold uppercase tracking-widest" style={{ fontFamily: 'var(--font-heading), Cormorant Garamond, Georgia, serif' }}>Dossier Bancaire</h1>
+                    <p className="text-sm text-slate-500 mt-1">Généré par Rendement Immo</p>
                 </div>
                 <div className="text-right">
                     <div className="text-xl font-semibold">{city ? city.nom : 'Projet Immobilier'}</div>

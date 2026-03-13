@@ -1,8 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -37,10 +37,10 @@
 }
 
 /*
-  Design inspiration: AVA SRG (Awwwards SOTD)
-  https://www.awwwards.com/sites/ava-srg
-  Palette 2 couleurs: #DAD9D3 (fond clair), #211D1D (texte / surfaces sombres).
-  Style: minimal, intuitif, animations subtiles, beaucoup d’espace.
+  Design inspiration: The Oppenheim Group, Joyce Rey (luxury real estate)
+  https://ogroup.com  https://joycerey.com
+  Palette: white/cream, charcoal, gold accent.
+  Elegant serif headings (Cormorant, DM Sans).
 */
 
 /*
@@ -65,68 +65,68 @@
 }
 
 :root {
-  /* AVA SRG — palette 2 couleurs: #DAD9D3, #211D1D */
-  --background: 30 13% 86%;
-  --foreground: 0 7% 13%;
+  /* Luxury real estate palette — white, charcoal, gold accent */
+  --background: 40 20% 98%;
+  --foreground: 0 5% 15%;
 
-  --card: 30 10% 92%;
-  --card-foreground: 0 7% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 5% 15%;
 
-  --popover: 30 10% 92%;
-  --popover-foreground: 0 7% 13%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 5% 15%;
 
-  --primary: 0 7% 13%;
-  --primary-foreground: 30 13% 86%;
+  --primary: 0 5% 12%;
+  --primary-foreground: 40 20% 98%;
 
-  --secondary: 30 12% 78%;
-  --secondary-foreground: 0 7% 13%;
+  --secondary: 43 20% 94%;
+  --secondary-foreground: 0 5% 15%;
 
-  --muted: 30 12% 80%;
-  --muted-foreground: 0 5% 35%;
+  --muted: 40 15% 92%;
+  --muted-foreground: 0 4% 40%;
 
-  --accent: 30 12% 82%;
-  --accent-foreground: 0 7% 13%;
+  --accent: 43 45% 60%;
+  --accent-foreground: 0 5% 12%;
 
   --destructive: 0 65% 45%;
-  --destructive-foreground: 30 13% 86%;
+  --destructive-foreground: 40 20% 98%;
 
-  --border: 30 10% 75%;
-  --input: 30 10% 78%;
-  --ring: 0 7% 13%;
+  --border: 40 10% 90%;
+  --input: 40 10% 92%;
+  --ring: 0 5% 12%;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
   --section-gap: 3rem;
+  --gold: 43 45% 50%;
 }
 
 .dark {
-  /* AVA SRG dark: #211D1D en fond */
-  --background: 0 7% 13%;
-  --foreground: 30 13% 86%;
+  --background: 0 5% 10%;
+  --foreground: 40 15% 92%;
 
-  --card: 0 6% 18%;
-  --card-foreground: 30 13% 86%;
+  --card: 0 5% 14%;
+  --card-foreground: 40 15% 92%;
 
-  --popover: 0 6% 18%;
-  --popover-foreground: 30 13% 86%;
+  --popover: 0 5% 14%;
+  --popover-foreground: 40 15% 92%;
 
-  --primary: 30 13% 86%;
-  --primary-foreground: 0 7% 13%;
+  --primary: 40 15% 92%;
+  --primary-foreground: 0 5% 12%;
 
-  --secondary: 0 6% 22%;
-  --secondary-foreground: 30 13% 86%;
+  --secondary: 0 5% 18%;
+  --secondary-foreground: 40 15% 92%;
 
-  --muted: 0 6% 22%;
-  --muted-foreground: 30 10% 65%;
+  --muted: 0 5% 18%;
+  --muted-foreground: 40 10% 60%;
 
-  --accent: 0 6% 20%;
-  --accent-foreground: 30 13% 86%;
+  --accent: 43 35% 45%;
+  --accent-foreground: 40 15% 92%;
 
   --destructive: 0 55% 40%;
-  --destructive-foreground: 30 13% 86%;
+  --destructive-foreground: 40 15% 92%;
 
-  --border: 0 6% 25%;
-  --input: 0 6% 22%;
-  --ring: 30 13% 86%;
+  --border: 0 5% 20%;
+  --input: 0 5% 18%;
+  --ring: 40 15% 92%;
 }
 
 @layer base {
@@ -140,54 +140,54 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* AVA SRG: hiérarchie typographique claire */
-  h1, h2, h3 {
+  h1, h2, h3, h4 {
     letter-spacing: -0.02em;
   }
 }
 
 @layer utilities {
   .glass {
-    background-color: rgb(218 217 211 / 0.9);
+    background-color: rgb(255 252 245 / 0.95);
     backdrop-filter: blur(12px);
-    border: 1px solid rgb(33 29 29 / 0.08);
+    border: 1px solid rgb(0 0 0 / 0.06);
   }
   .dark .glass {
-    background-color: rgb(33 29 29 / 0.9);
-    border-color: rgb(218 217 211 / 0.1);
+    background-color: rgb(20 20 22 / 0.95);
+    border-color: rgb(255 255 255 / 0.08);
   }
 
   .glass-card {
-    background-color: rgb(218 217 211 / 0.6);
-    border: 1px solid rgb(33 29 29 / 0.06);
+    background-color: rgb(255 255 255 / 0.9);
+    border: 1px solid rgb(0 0 0 / 0.04);
     transition: all 0.3s ease;
   }
   .glass-card:hover {
-    box-shadow: 0 12px 40px -12px rgb(33 29 29 / 0.08);
+    box-shadow: 0 12px 40px -12px rgb(0 0 0 / 0.06);
   }
   .dark .glass-card {
-    background-color: rgb(33 29 29 / 0.4);
-    border-color: rgb(218 217 211 / 0.08);
+    background-color: rgb(30 30 32 / 0.8);
+    border-color: rgb(255 255 255 / 0.06);
   }
 
   .text-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(to right, #211D1D, #211D1D);
-  }
-  .dark .text-gradient {
-    background-image: linear-gradient(to right, #DAD9D3, #DAD9D3);
+    background-image: linear-gradient(135deg, hsl(var(--gold)) 0%, hsl(var(--primary)) 100%);
   }
 
-  /* AVA SRG: motion doux, transitions */
+  .gold-accent {
+    color: hsl(43 45% 45%);
+  }
+
   .card-hover {
-    @apply transition-all duration-500 ease-out;
+    @apply transition-all duration-300 ease-out;
   }
   .card-hover:hover {
     transform: translateY(-2px);
-    box-shadow: 0 24px 48px -12px rgb(33 29 29 / 0.08);
+    box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.08);
   }
 
   /* Entrée en douceur (style AVA) */
@@ -207,5 +207,13 @@
 
   .section-gap {
     gap: var(--section-gap, 3rem);
+  }
+
+  /* France map - dark mode regions */
+  .dark .map-regions path {
+    fill: rgba(255, 255, 255, 0.08);
+  }
+  .dark .map-regions path:hover {
+    fill: rgba(255, 255, 255, 0.2);
   }
 }

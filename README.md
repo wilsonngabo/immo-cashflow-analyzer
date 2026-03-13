@@ -1,10 +1,10 @@
-# 🏙️ ImmoCashFlow Analyzer
+# 🏙️ Rendement Immo
 
-**ImmoCashFlow** est une application web moderne de simulation et d'analyse d'investissements immobiliers locatifs en France.
+**Rendement Immo** est une application web de simulation et d'analyse d'investissements immobiliers locatifs en France.
 
 Conçue pour les investisseurs exigeants, elle permet de calculer la rentabilité précise d'un projet en tenant compte de la fiscalité (LMNP, SCI), des aides (PTZ, Action Logement), et de comparer différents scénarios.
 
-![ImmoCashFlow Dashboard](https://via.placeholder.com/800x400?text=Dashboard+ImmoCashFlow)
+![Rendement Immo](https://via.placeholder.com/800x400?text=Rendement+Immo)
 
 ---
 

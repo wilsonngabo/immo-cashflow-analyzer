@@ -19,7 +19,18 @@ import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxR
 import { useRates } from '@/hooks/useRates';
 
 interface PropertyBrowserProps {
-    onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string; rentMarketInfo?: { median: number; count: number } | null }) => void;
+    onAnalyze: (data: Partial<InvestmentData>, options?: {
+      fiscalMode?: string;
+      rentMarketInfo?: {
+        median: number;
+        count: number;
+        colocPerRoom?: number | null;
+        colocCount?: number;
+        colocSource?: string | null;
+        furnished?: { count: number; median: number } | null;
+        unfurnished?: { count: number; median: number } | null;
+      } | null;
+    }) => void;
     initialFilters?: Record<string, string> | null;
 }
 
@@ -308,7 +319,15 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
 
             // Fetch market rent from LBC location listings stored in DB
             let marketRent: number | null = null;
-            let rentMarketInfo: { median: number; count: number } | null = null;
+            let rentMarketInfo: {
+                median: number;
+                count: number;
+                colocPerRoom?: number | null;
+                colocCount?: number;
+                colocSource?: string | null;
+                furnished?: { count: number; median: number } | null;
+                unfurnished?: { count: number; median: number } | null;
+            } | null = null;
             if (p.postalCode) {
                 try {
                     const params = new URLSearchParams({ postalCode: p.postalCode });
@@ -379,11 +398,11 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
         <div className="space-y-8">
             <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                    <h2 className="text-lg font-semibold tracking-tight text-[#211D1D] dark:text-[#DAD9D3] flex items-center gap-2">
+                    <h2 className="text-lg font-semibold tracking-tight text-[#1a1a1a] dark:text-[#F5F3ED] flex items-center gap-2">
                         <Database className="w-5 h-5 opacity-70" />
                         Base d&apos;Annonces Immobilières
                     </h2>
-                    <p className="text-sm text-[#211D1D]/70 dark:text-[#DAD9D3]/70 mt-1">
+                    <p className="text-sm text-[#1a1a1a]/70 dark:text-[#F5F3ED]/70 mt-1">
                         {total > 0 ? `${total.toLocaleString('fr-FR')} annonce${total > 1 ? 's' : ''} en base` : 'Aucun résultat pour les critères choisis'}
                     </p>
                 </div>
@@ -398,10 +417,10 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
                         { label: 'Surface moyenne', value: `${stats.avgSurface} m²`, sub: 'Annonces avec surface' },
                         { label: 'Prix/m² moyen', value: `${stats.avgPricePerSqm.toLocaleString('fr-FR')} €/m²`, sub: 'Annonces calculables' },
                     ].map(s => (
-                        <div key={s.label} className="rounded-2xl p-5 bg-[#211D1D]/[0.04] dark:bg-[#DAD9D3]/[0.06] border border-[#211D1D]/[0.08] dark:border-[#DAD9D3]/[0.12]">
-                            <div className="text-[10px] font-medium text-[#211D1D]/60 dark:text-[#DAD9D3]/60 uppercase tracking-widest">{s.label}</div>
-                            <div className="text-xl font-semibold text-[#211D1D] dark:text-[#DAD9D3] mt-2">{s.value}</div>
-                            <div className="text-xs text-[#211D1D]/50 dark:text-[#DAD9D3]/50 mt-1">{s.sub}</div>
+                        <div key={s.label} className="rounded-2xl p-5 bg-[#1a1a1a]/[0.04] dark:bg-white/[0.06] border border-black/5 dark:border-white/10">
+                            <div className="text-[10px] font-medium text-[#1a1a1a]/60 dark:text-[#F5F3ED]/60 uppercase tracking-widest">{s.label}</div>
+                            <div className="text-xl font-semibold text-[#1a1a1a] dark:text-[#F5F3ED] mt-2">{s.value}</div>
+                            <div className="text-xs text-[#1a1a1a]/50 dark:text-[#F5F3ED]/50 mt-1">{s.sub}</div>
                         </div>
                     ))}
                 </div>
@@ -574,20 +593,20 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
 
             {/* Property grid */}
             {apiError ? (
-                <div className="text-center py-16 rounded-2xl border border-[#211D1D]/10 dark:border-[#DAD9D3]/10 bg-[#211D1D]/[0.03] dark:bg-[#DAD9D3]/[0.05] max-w-md mx-auto">
-                    <AlertCircle className="w-10 h-10 mx-auto mb-4 text-[#211D1D]/60 dark:text-[#DAD9D3]/60" />
-                    <p className="text-sm font-medium text-[#211D1D] dark:text-[#DAD9D3]">Erreur de chargement</p>
-                    <p className="text-xs mt-2 text-[#211D1D]/60 dark:text-[#DAD9D3]/60">{apiError}</p>
-                    <Button variant="outline" size="sm" className="mt-6 rounded-full border-[#211D1D]/20 dark:border-[#DAD9D3]/20" onClick={() => fetchProperties(1)}>
+                <div className="text-center py-16 rounded-3xl border border-black/5 dark:border-white/5 bg-[#1a1a1a]/[0.03] dark:bg-white/[0.05] max-w-md mx-auto">
+                    <AlertCircle className="w-10 h-10 mx-auto mb-4 text-[#1a1a1a]/60 dark:text-[#F5F3ED]/60" />
+                    <p className="text-sm font-medium text-[#1a1a1a] dark:text-[#F5F3ED]">Erreur de chargement</p>
+                    <p className="text-xs mt-2 text-[#1a1a1a]/60 dark:text-[#F5F3ED]/60">{apiError}</p>
+                    <Button variant="outline" size="sm" className="mt-6 rounded-full" onClick={() => fetchProperties(1)}>
                         <RefreshCw className="w-4 h-4 mr-2" /> Réessayer
                     </Button>
                 </div>
             ) : loading ? (
                 <div className="flex justify-center py-16">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#211D1D]/40 dark:text-[#DAD9D3]/40" />
+                    <Loader2 className="w-8 h-8 animate-spin text-[#1a1a1a]/40 dark:text-[#F5F3ED]/40" />
                 </div>
             ) : properties.length === 0 || total === 0 ? (
-                <div className="text-center py-16 text-[#211D1D]/60 dark:text-[#DAD9D3]/60">
+                <div className="text-center py-16 text-[#1a1a1a]/60 dark:text-[#F5F3ED]/60">
                     <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="text-sm font-medium">Aucun résultat</p>
                     <p className="text-xs mt-2">Modifiez les filtres ou lancez une collecte ci-dessus.</p>
@@ -596,7 +615,7 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
                 <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                         {displayedProperties.map((p, idx) => (
-                            <Card key={p.id} className="flex flex-col overflow-hidden card-hover rounded-2xl border border-[#211D1D]/[0.08] dark:border-[#DAD9D3]/[0.12] bg-[#DAD9D3]/50 dark:bg-[#211D1D]/50 group animate-fade-in-up" style={{ animationDelay: `${Math.min(idx * 0.04, 0.36)}s` }}>
+                            <Card key={p.id} className="flex flex-col overflow-hidden card-hover rounded-2xl border border-black/5 dark:border-white/10 bg-white/50 dark:bg-[#1c1c1e]/50 group animate-fade-in-up" style={{ animationDelay: `${Math.min(idx * 0.04, 0.36)}s` }}>
                                 {/* Image */}
                                 {p.imageUrl ? (
                                     <div className="h-36 bg-slate-100 overflow-hidden relative">

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ImmoCashFlow — Analyse de rentabilité immobilière",
-  description: "Calculez le cashflow et la rentabilité de vos projets immobiliers. Annonces, simulateur LMNP, comparatif fiscal.",
+  title: "Rendement Immo — Analyse de rentabilité immobilière",
+  description: "Calculez le cashflow et la rentabilité de vos projets immobiliers en France. Simulateur LMNP, comparatif fiscal, annonces LeBonCoin.",
 };
 
 export default function RootLayout({
