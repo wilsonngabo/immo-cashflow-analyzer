@@ -3,11 +3,13 @@
 ## Option A : tmknight/docker-nordvpn (recommandé si Gluetun échoue)
 
 Utilise le **client NordVPN officiel** + token. Plex inchangé. **Rotation automatique** au bloc LBC (disconnect/connect).
+**Kill switch** : aucune fuite d’IP — tout le trafic est bloqué si le VPN tombe.
 
 1. Générer un token : [Nord Account → Generate new token](https://support.nordvpn.com/hc/en-us/articles/20286980309265)
 2. Dans `.env` : `NORDVPN_WIREGUARD_TOKEN=votre_token`
-3. Lancer : `./scripts/run_lbc_vpn_docker.sh`  
-   ou : `docker compose -f docker-compose.nordvpn.yml run --rm scraper`
+3. Lancer :
+   - **Single worker** : `./scripts/run_lbc_vpn_docker.sh` ou `docker compose -f docker-compose.nordvpn.yml run --rm scraper`
+   - **5 workers en parallèle** (5 IP, 5 régions) : `./scripts/run_lbc_parallel.sh`
 
 ## Option B : Gluetun (OpenVPN)
 

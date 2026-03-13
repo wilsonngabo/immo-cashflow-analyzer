@@ -20,6 +20,9 @@ Usage:
 import os
 import sys
 
+# Ensure scripts/ is in path for shared import
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Unbuffered output so progress is visible when run from scripts/automation
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -33,7 +36,6 @@ import random
 import sqlite3
 import subprocess
 import argparse
-import ctypes
 import traceback
 from datetime import datetime
 
@@ -41,17 +43,26 @@ import lbc_scrape
 import rates_scrape
 from regions import REGIONS, DEPARTMENTS, region_slug
 
-# ─── Configuration ───────────────────────────────────────────────────────────
+from shared.config import DATA_DIR, DB_FILE, LBC_PROGRESS_FILE
+from shared.vpn import (
+    use_proxy_vpn,
+    use_docker_nordvpn,
+    ensure_proxy_vpn_ready,
+    rotate_vpn,
+    is_vpn_connected,
+    ensure_vpn_connected,
+)
+from shared.power import prevent_sleep, allow_sleep
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-DB_FILE = os.path.join(DATA_DIR, "properties.db")
-LBC_PROGRESS_FILE = os.path.join(DATA_DIR, "lbc_progress.json")
+# ─── Configuration ───────────────────────────────────────────────────────────
 PAGE_SIZE = 100
 
 MAX_ADS_PER_SEARCH = 10_000
 MAX_PER_SEARCH_OFFSET = 2500
 
-PRICE_RANGES_BUY = [(p, p + 25_000) for p in range(0, 2_000_000, 25_000)] + [(2_000_000, 10_000_000)]
+_price_min_buy = int(os.environ.get("PIPELINE_PRICE_MIN", 0))
+_price_max_buy = int(os.environ.get("PIPELINE_PRICE_MAX", 2_000_000))
+PRICE_RANGES_BUY = [(p, min(p + 25_000, _price_max_buy)) for p in range(_price_min_buy, _price_max_buy, 25_000)]
 PRICE_RANGES_RENT = [(p, p + 100) for p in range(0, 5_000, 100)] + [(5_000, 50_000)]
 
 # Delays — overridden when --vpn is used
@@ -66,222 +77,14 @@ BACKOFF_INITIAL = 45
 BACKOFF_MULTIPLIER = 2
 BACKOFF_MAX = 360
 MAX_BLOCK_ROUNDS = 5
-
-# NordVPN CLI: Windows path vs Linux/macOS (nordvpn from PATH)
-import platform
-if platform.system() == "Windows":
-    NORDVPN_CLI = os.environ.get("NORDVPN_CLI", r"C:\Program Files\NordVPN\nordvpn.exe")
-else:
-    NORDVPN_CLI = os.environ.get("NORDVPN_CLI", "nordvpn")
+MAX_VPN_ROTATIONS_PER_TRANCHE = 5  # Après N rotations sur une tranche, passer à la suivante
+ROTATION_COOLDOWN = 30  # s à attendre après rotation avant retry
 
 ESTIMATED_TOTAL_LISTINGS = 1_000_000
 
 
-def prevent_sleep():
-    """Tell OS to stay awake while scraping. Windows: SetThreadExecutionState. Linux: systemd-inhibit (if available)."""
-    if platform.system() == "Windows":
-        try:
-            ES_CONTINUOUS = 0x80000000
-            ES_SYSTEM_REQUIRED = 0x00000001
-            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-            print("[POWER] Sleep mode disabled — PC will stay awake")
-        except Exception as e:
-            print(f"[POWER] Could not disable sleep: {e}")
-    else:
-        # Linux/macOS: no-op (desktop sleep prevention not commonly needed for scraping)
-        pass
-
-
-def allow_sleep():
-    """Re-enable normal OS sleep behavior."""
-    if platform.system() == "Windows":
-        try:
-            ES_CONTINUOUS = 0x80000000
-            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
-            print("[POWER] Sleep mode re-enabled")
-        except Exception as e:
-            print(f"[POWER] Could not re-enable sleep: {e}")
-
-
 def get_price_ranges(listing_type: str) -> list[tuple[int, int]]:
     return PRICE_RANGES_RENT if listing_type == "rent" else PRICE_RANGES_BUY
-
-
-# ─── VPN: Proxy (Gluetun) vs Host NordVPN vs Docker NordVPN (tmknight) ───────────
-# Proxy mode: SCRAPER_VPN_PROXY_MODE=1 — uses Gluetun (separate from Plex), LBC traffic via proxy
-# Docker NordVPN: SCRAPER_VPN_DOCKER_NORDVPN=1 — scraper inside tmknight container, rotate via docker exec
-
-SCRAPER_VPN_PROXY = os.environ.get("SCRAPER_VPN_PROXY", "http://localhost:8888").strip()
-SCRAPER_VPN_CONTAINER = os.environ.get("SCRAPER_VPN_CONTAINER", "gluetun-scraper").strip()
-SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER = os.environ.get(
-    "SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER", "nordvpn-scraper"
-).strip()
-
-
-def use_proxy_vpn() -> bool:
-    """Use Gluetun proxy (does not affect Plex) instead of host NordVPN."""
-    return os.environ.get("SCRAPER_VPN_PROXY_MODE", "0") in ("1", "true", "yes")
-
-
-def use_docker_nordvpn() -> bool:
-    """Scraper runs inside tmknight NordVPN container; rotate via docker exec."""
-    return os.environ.get("SCRAPER_VPN_DOCKER_NORDVPN", "0") in ("1", "true", "yes")
-
-
-def _docker_cmd():
-    """Return docker compose command (docker-compose or docker compose)."""
-    for cmd in ["docker-compose", "docker compose"]:
-        try:
-            subprocess.run(cmd.split() + ["version"], capture_output=True, timeout=5)
-            return cmd.split()
-        except Exception:
-            pass
-    return ["docker-compose"]
-
-
-def ensure_proxy_vpn_ready() -> bool:
-    """Ensure Gluetun scraper container is running; set LBC_PROXY."""
-    if not use_proxy_vpn():
-        return False
-    try:
-        result = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Running}}", SCRAPER_VPN_CONTAINER],
-            capture_output=True, timeout=5, text=True
-        )
-        if result.returncode != 0 or "true" not in (result.stdout or "").lower():
-            print(f"[VPN] Starting {SCRAPER_VPN_CONTAINER}...")
-            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            compose_file = os.path.join(project_dir, "docker-compose.scraper-vpn.yml")
-            subprocess.run(
-                _docker_cmd() + ["-f", compose_file, "up", "-d"],
-                cwd=project_dir, capture_output=True, timeout=60
-            )
-            time.sleep(10)
-    except Exception as e:
-        print(f"[VPN] Docker check failed: {e}")
-        return False
-
-    os.environ["LBC_PROXY"] = SCRAPER_VPN_PROXY
-    print(f"[VPN] Proxy mode: {SCRAPER_VPN_PROXY} (Plex unaffected)")
-    return True
-
-
-def rotate_proxy_vpn() -> bool:
-    """Rotate IP by restarting Gluetun scraper container."""
-    if not SCRAPER_VPN_CONTAINER:
-        return False
-    print(f"    [VPN] Rotating: docker restart {SCRAPER_VPN_CONTAINER}")
-    try:
-        subprocess.run(["docker", "restart", SCRAPER_VPN_CONTAINER], capture_output=True, timeout=30)
-        time.sleep(15)
-        return True
-    except Exception as e:
-        print(f"    [VPN] Rotation failed: {e}")
-        return False
-
-
-def _rotate_docker_nordvpn() -> bool:
-    """Rotate IP by disconnect/connect inside tmknight NordVPN container (requires docker socket)."""
-    container = SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER
-    print(f"    [VPN] Rotating: docker exec {container} nordvpn disconnect + connect France")
-    try:
-        import docker as docker_module
-        client = docker_module.from_env()
-        nordvpn = client.containers.get(container)
-        nordvpn.exec_run("nordvpn disconnect", detach=False)
-        time.sleep(5)
-        nordvpn.exec_run("nordvpn connect France", detach=False)
-        time.sleep(5)
-        return True
-    except ImportError:
-        print("    [VPN] pip install docker required for tmknight rotation")
-        return False
-    except Exception as e:
-        print(f"    [VPN] Docker NordVPN rotation failed: {e}")
-        return False
-
-
-def rotate_vpn() -> bool:
-    """Disconnect and reconnect VPN for fresh IP. Proxy: restart Gluetun. Docker NordVPN: exec disconnect/connect. Host: NordVPN CLI."""
-    if use_proxy_vpn():
-        return rotate_proxy_vpn()
-    if use_docker_nordvpn():
-        return _rotate_docker_nordvpn()
-    print("    [VPN] Rotating to new French server...")
-    try:
-        subprocess.run([NORDVPN_CLI, "-d"], capture_output=True, timeout=10)
-    except Exception:
-        pass
-    time.sleep(3)
-
-    for attempt in range(3):
-        try:
-            subprocess.run([NORDVPN_CLI, "-c", "-g", "France"],
-                           capture_output=True, timeout=30, text=True)
-            time.sleep(5)
-            if is_vpn_connected():
-                print("    [VPN] Connected to new French server")
-                return True
-        except Exception as e:
-            print(f"    [VPN] Rotation attempt {attempt + 1} failed: {e}")
-        time.sleep(5)
-
-    print("    [VPN] WARNING: Could not rotate — retrying ensure_vpn_connected")
-    ensure_vpn_connected()
-    return is_vpn_connected()
-
-
-def is_vpn_connected() -> bool:
-    """Check if VPN is ready. Proxy: container running. Docker NordVPN: assume true. Host: NordVPN connected."""
-    if use_docker_nordvpn():
-        return True  # Already in VPN container
-    if use_proxy_vpn():
-        try:
-            result = subprocess.run(
-                ["docker", "inspect", "-f", "{{.State.Running}}", SCRAPER_VPN_CONTAINER],
-                capture_output=True, timeout=5, text=True
-            )
-            return result.returncode == 0 and "true" in (result.stdout or "").lower()
-        except Exception:
-            return False
-    try:
-        result = subprocess.run([NORDVPN_CLI, "status"],
-                                capture_output=True, timeout=10, text=True)
-        output = (result.stdout + result.stderr).lower()
-        return "connected" in output and "disconnected" not in output
-    except Exception:
-        return False
-
-
-def ensure_vpn_connected():
-    """Make sure VPN is ready. Proxy: start Gluetun. Docker NordVPN: no-op. Host: connect NordVPN to France."""
-    if use_docker_nordvpn():
-        return  # Already in VPN container
-    if use_proxy_vpn():
-        if ensure_proxy_vpn_ready():
-            return
-        print("[VPN] FATAL: Could not start Gluetun scraper. Run: docker compose -f docker-compose.scraper-vpn.yml up -d")
-        sys.exit(1)
-    if is_vpn_connected():
-        print("[VPN] Already connected")
-        return
-
-    print("[VPN] Not connected — connecting to France...")
-    for attempt in range(3):
-        try:
-            subprocess.run([NORDVPN_CLI, "-c", "-g", "France"],
-                           capture_output=True, timeout=30)
-            time.sleep(5)
-            if is_vpn_connected():
-                print("[VPN] Connected to France")
-                return
-        except Exception as e:
-            print(f"[VPN] Connection attempt {attempt + 1} failed: {e}")
-            time.sleep(5)
-
-    print("[VPN] FATAL: Could not connect to VPN after 3 attempts.")
-    print("[VPN] Refusing to scrape without VPN to protect your IP.")
-    sys.exit(1)
 
 
 # ─── SQLite helpers ──────────────────────────────────────────────────────────
@@ -297,8 +100,9 @@ COLS = [
 
 
 def open_db() -> sqlite3.Connection:
+    from shared.db import init_db
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = lbc_scrape.init_db(DB_FILE)
+    conn = init_db(DB_FILE)
     for col, typ in [("region", "TEXT"), ("ownerType", "TEXT"),
                      ("estimatedYield", "REAL"), ("estimatedCashflow", "REAL")]:
         try:
@@ -389,8 +193,11 @@ def progress_key(dept: str, listing_type: str, kind: str, tranche_idx: int) -> s
     return f"{dept}_{listing_type}_{kind}_{tranche_idx}"
 
 
-def count_total_tranches(listing_types: list[str]) -> int:
-    n_depts = sum(len(codes) for codes in REGIONS.values())
+def count_total_tranches(listing_types: list[str], regions_to_use: list[tuple[str, list[str]]] | None = None) -> int:
+    """Count total tranches. If regions_to_use given, only count those regions."""
+    if regions_to_use is None:
+        regions_to_use = list(REGIONS.items())
+    n_depts = sum(len(codes) for _, codes in regions_to_use)
     total = 0
     for lt in listing_types:
         total += n_depts * len(get_price_ranges(lt)) * len(PROPERTY_KINDS)
@@ -560,15 +367,21 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
     if not resume:
         save_lbc_progress({})
 
-    # Filter by region if PIPELINE_REGION is set (e.g. PIPELINE_REGION=Normandie)
+    # Filter by region(s): PIPELINE_REGION (single) or PIPELINE_REGIONS (comma-separated)
     region_filter = (os.environ.get("PIPELINE_REGION") or "").strip()
+    regions_filter = (os.environ.get("PIPELINE_REGIONS") or "").strip()
+    region_list = [r.strip() for r in regions_filter.split(",") if r.strip()] if regions_filter else []
+    if region_filter and not region_list:
+        region_list = [region_filter]
+
     regions_to_use = REGIONS.items()
-    if region_filter:
-        if region_filter not in REGIONS:
-            print(f"[ERROR] Unknown region '{region_filter}'. Valid: {list(REGIONS.keys())}")
-            sys.exit(1)
-        regions_to_use = [(region_filter, REGIONS[region_filter])]
-        print(f"  Region filter: {region_filter} only")
+    if region_list:
+        for r in region_list:
+            if r not in REGIONS:
+                print(f"[ERROR] Unknown region '{r}'. Valid: {list(REGIONS.keys())}")
+                sys.exit(1)
+        regions_to_use = [(r, REGIONS[r]) for r in region_list]
+        print(f"  Region filter: {', '.join(region_list)}")
 
     all_dept_codes = []
     for _, codes in regions_to_use:
@@ -576,11 +389,12 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
             if c not in all_dept_codes:
                 all_dept_codes.append(c)
 
-    total_tranches = count_total_tranches(listing_types)
+    total_tranches = count_total_tranches(listing_types, regions_to_use)
     total_inserted = 0
     total_requests = 0
     vpn_rotations = 0
     block_rounds = 0
+    rotations_per_tranche: dict[str, int] = {}
     backoff_time = BACKOFF_INITIAL
     session = lbc_scrape.make_session()
     started_at = time.time()
@@ -615,8 +429,16 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
 
                     if had_error:
                         if use_vpn:
+                            rotations_per_tranche[pkey] = rotations_per_tranche.get(pkey, 0) + 1
+                            if rotations_per_tranche[pkey] > MAX_VPN_ROTATIONS_PER_TRANCHE:
+                                print(f"    [!] Max rotations ({MAX_VPN_ROTATIONS_PER_TRANCHE}) — skip tranche")
+                                progress[pkey] = {"count": 0, "skip": True}
+                                session = lbc_scrape.make_session()
+                                continue
                             vpn_rotations += 1
                             rotate_vpn()
+                            print(f"    [VPN] Cooldown {ROTATION_COOLDOWN}s avant retry...")
+                            time.sleep(ROTATION_COOLDOWN)
                             session = lbc_scrape.make_session()
                             continue
                         else:
@@ -631,6 +453,7 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
                     else:
                         block_rounds = 0
                         backoff_time = BACKOFF_INITIAL
+                        rotations_per_tranche.pop(pkey, None)
 
                     if ads:
                         for ad in ads:
@@ -780,13 +603,10 @@ def main() -> None:
 
     allow_sleep()
 
-    # ─── Auto-shutdown ───────────────────────────────────────────────────
+    # ─── Auto-shutdown (Linux) ─────────────────────────────────────────────
     if args.shutdown:
         print("\n>>> Computer will shut down in 60 seconds. Close this window to cancel.")
-        if platform.system() == "Windows":
-            subprocess.run(["shutdown", "/s", "/t", "60"])
-        else:
-            subprocess.run(["shutdown", "-h", "+1"], capture_output=True)
+        subprocess.run(["shutdown", "-h", "+1"], capture_output=True)
 
 
 if __name__ == "__main__":

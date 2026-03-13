@@ -21,6 +21,8 @@ services:
       - TOKEN=${NORDVPN_WIREGUARD_TOKEN}
       - CONNECT=France
       - TECHNOLOGY=NordLynx
+      - FIREWALL=TRUE
+      - KILLSWITCH=TRUE
     restart: unless-stopped
 
   scraper:

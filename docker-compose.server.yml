@@ -1,0 +1,21 @@
+# Run the immo-cashflow-analyzer web server in Docker
+# Usage:
+#   docker compose -f docker-compose.server.yml up -d
+#   docker compose -f docker-compose.server.yml up --build -d   # rebuild
+#   docker compose -f docker-compose.server.yml logs -f       # follow logs
+#
+# Server: http://localhost:3000
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: immo-server
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      HOSTNAME: 0.0.0.0
+    restart: unless-stopped

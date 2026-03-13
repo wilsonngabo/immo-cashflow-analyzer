@@ -1,0 +1,34 @@
+# Dockerfile for running the immo-cashflow-analyzer web server
+# Usage: docker compose -f docker-compose.server.yml up -d
+
+FROM node:20-slim AS base
+
+# Install deps for better-sqlite3 (native module)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml* package-lock.json* yarn.lock* ./
+RUN corepack enable pnpm && pnpm install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm run build
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+EXPOSE 3000
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+RUN mkdir -p /app/data
+
+CMD ["node", "server.js"]

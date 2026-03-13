@@ -4,6 +4,7 @@ Scrape current mortgage rates from CAFPI baromètre.
 Stores national rates by duration + regional rates into SQLite.
 
 Source: https://www.cafpi.fr/credit-immobilier/barometre-taux/actualites-taux/
+Uses LBC_PROXY or HTTPS_PROXY when set (never expose personal IP).
 """
 
 import re
@@ -11,15 +12,32 @@ import sqlite3
 import os
 from datetime import datetime
 
+def _get_proxies():
+    """Use proxy when set (protects personal IP)."""
+    p = os.environ.get("LBC_PROXY") or os.environ.get("HTTPS_PROXY")
+    if not p:
+        return None
+    return {"https": p, "http": p}
+
 try:
     from curl_cffi import requests as cffi_requests
     def fetch_html(url: str) -> str:
-        resp = cffi_requests.get(url, impersonate="chrome", timeout=30)
+        proxies = _get_proxies()
+        kw = {"impersonate": "chrome", "timeout": 30}
+        if proxies:
+            kw["proxies"] = proxies
+        resp = cffi_requests.get(url, **kw)
         resp.raise_for_status()
         return resp.text
 except ImportError:
     import urllib.request
     def fetch_html(url: str) -> str:
+        proxies = _get_proxies()
+        if proxies:
+            proxy_url = proxies.get("https") or proxies.get("http")
+            proxy_handler = urllib.request.ProxyHandler({"https": proxy_url, "http": proxy_url})
+            opener = urllib.request.build_opener(proxy_handler)
+            urllib.request.install_opener(opener)
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read().decode("utf-8")

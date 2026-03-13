@@ -16,9 +16,11 @@ import json
 import argparse
 import time
 import random
-import sqlite3
 import re
 from datetime import datetime, timezone
+
+# Ensure scripts/ is in path for shared import
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from curl_cffi import requests as cf_requests
@@ -52,110 +54,9 @@ REAL_ESTATE_ALL       = ["1", "2"]
 LBC_API_URL = "https://api.leboncoin.fr/finder/search"
 # Fetch single ad by id (same as https://github.com/thomasync/leboncoin-api-search searchById)
 LBC_ADFINDER_URL = "https://api.leboncoin.fr/api/adfinder/v1/myads"
-IMPERSONATE_OPTIONS = ["chrome110", "chrome107", "chrome104", "edge101"]
 
-
-def _get_proxies():
-    """Optional proxy from env (e.g. residential proxy to reduce Datadome blocks)."""
-    p = os.environ.get("LBC_PROXY") or os.environ.get("HTTPS_PROXY")
-    if not p:
-        return None
-    return {"https": p, "http": p}
-
-
-def make_session(impersonate=None):
-    """Session with TLS impersonation and optional proxy (LBC_PROXY or HTTPS_PROXY)."""
-    imp = impersonate or random.choice(IMPERSONATE_OPTIONS)
-    proxies = _get_proxies()
-    if proxies:
-        return cf_requests.Session(impersonate=imp, proxies=proxies)
-    return cf_requests.Session(impersonate=imp)
-
-
-def init_db(db_path: str):
-    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS properties (
-            id TEXT PRIMARY KEY,
-            source TEXT,
-            title TEXT,
-            price REAL,
-            surface REAL,
-            rooms INTEGER,
-            city TEXT,
-            postalCode TEXT,
-            propertyKind TEXT,
-            listingType TEXT,
-            url TEXT,
-            imageUrl TEXT,
-            description TEXT,
-            scrapedAt TEXT,
-            pricePerSqm REAL,
-            dpe TEXT,
-            ges TEXT,
-            charges REAL,
-            floor INTEGER,
-            hasElevator BOOLEAN,
-            hasBalcony BOOLEAN,
-            hasParking BOOLEAN,
-            builtYear INTEGER,
-            propertyTax REAL,
-            isNew BOOLEAN,
-            energyHeating TEXT,
-            heatingType TEXT,
-            bedrooms INTEGER,
-            isFurnished BOOLEAN,
-            hasCellar BOOLEAN,
-            hasGarage BOOLEAN,
-            terrain REAL,
-            nbPhotos INTEGER,
-            ownerType TEXT,
-            estimatedYield REAL,
-            estimatedCashflow REAL
-        )
-    ''')
-    for col, typ in (("ownerType", "TEXT"), ("estimatedYield", "REAL"), ("estimatedCashflow", "REAL")):
-        try:
-            conn.execute(f"ALTER TABLE properties ADD COLUMN {col} {typ}")
-            conn.commit()
-        except Exception:
-            pass
-    return conn
-
-def save_to_db(conn, properties):
-    """Insertion incrémentale : n'ajoute que les annonces dont l'id n'est pas déjà en base. Retourne (ajoutées, déjà_présentes)."""
-    if not properties:
-        return (0, 0)
-    ids = [p["id"] for p in properties if p.get("id")]
-    if not ids:
-        return (0, len(properties))
-    placeholders = ",".join("?" for _ in ids)
-    existing = set(row[0] for row in conn.execute(f"SELECT id FROM properties WHERE id IN ({placeholders})", ids).fetchall())
-    to_insert = [p for p in properties if p.get("id") and p["id"] not in existing]
-    if not to_insert:
-        return (0, len(properties))
-    query = '''
-        INSERT INTO properties (
-            id, source, title, price, surface, rooms, city, postalCode, propertyKind,
-            listingType, url, imageUrl, description, scrapedAt, pricePerSqm,
-            dpe, ges, charges, floor, hasElevator, hasBalcony, hasParking,
-            builtYear, propertyTax, isNew, energyHeating, heatingType,
-            bedrooms, isFurnished, hasCellar, hasGarage, terrain, nbPhotos, ownerType,
-            estimatedYield, estimatedCashflow
-        ) VALUES (
-            :id, :source, :title, :price, :surface, :rooms, :city, :postalCode, :propertyKind,
-            :listingType, :url, :imageUrl, :description, :scrapedAt, :pricePerSqm,
-            :dpe, :ges, :charges, :floor, :hasElevator, :hasBalcony, :hasParking,
-            :builtYear, :propertyTax, :isNew, :energyHeating, :heatingType,
-            :bedrooms, :isFurnished, :hasCellar, :hasGarage, :terrain, :nbPhotos, :ownerType,
-            :estimatedYield, :estimatedCashflow
-        )
-    '''
-    conn.executemany(query, to_insert)
-    conn.commit()
-    return (len(to_insert), len(properties) - len(to_insert))
+from shared.session import make_session
+from shared.db import init_db, save_to_db
 
 
 def build_payload(city_key: str | None, listing_type: str, kind: str, limit: int,

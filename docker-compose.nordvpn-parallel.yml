@@ -1,0 +1,190 @@
+# 5 parallel NordVPN + scraper workers — each on France (IP crédibles pour LBC/Datadome)
+# Pays voisins = IP bloquées plus souvent par Datadome
+# Requires NORDVPN_WIREGUARD_TOKEN in .env
+# Run: ./scripts/run_lbc_parallel.sh
+
+services:
+  nordvpn-1:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-worker-1
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+    env_file: [.env]
+    environment:
+      TOKEN: ${NORDVPN_WIREGUARD_TOKEN}
+      CONNECT: France
+      TECHNOLOGY: NordLynx
+      FIREWALL: "TRUE"
+      KILLSWITCH: "TRUE"
+    restart: "no"
+
+  nordvpn-2:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-worker-2
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+    env_file: [.env]
+    environment:
+      TOKEN: ${NORDVPN_WIREGUARD_TOKEN}
+      CONNECT: France
+      TECHNOLOGY: NordLynx
+      FIREWALL: "TRUE"
+      KILLSWITCH: "TRUE"
+    restart: "no"
+
+  nordvpn-3:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-worker-3
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+    env_file: [.env]
+    environment:
+      TOKEN: ${NORDVPN_WIREGUARD_TOKEN}
+      CONNECT: France
+      TECHNOLOGY: NordLynx
+      FIREWALL: "TRUE"
+      KILLSWITCH: "TRUE"
+    restart: "no"
+
+  nordvpn-4:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-worker-4
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+    env_file: [.env]
+    environment:
+      TOKEN: ${NORDVPN_WIREGUARD_TOKEN}
+      CONNECT: France
+      TECHNOLOGY: NordLynx
+      FIREWALL: "TRUE"
+      KILLSWITCH: "TRUE"
+    restart: "no"
+
+  nordvpn-5:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-worker-5
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+    env_file: [.env]
+    environment:
+      TOKEN: ${NORDVPN_WIREGUARD_TOKEN}
+      CONNECT: France
+      TECHNOLOGY: NordLynx
+      FIREWALL: "TRUE"
+      KILLSWITCH: "TRUE"
+    restart: "no"
+
+  scraper-1:
+    image: python:3.12-slim
+    container_name: immo-scraper-1
+    network_mode: "service:nordvpn-1"
+    volumes: [.:/app, /var/run/docker.sock:/var/run/docker.sock]
+    working_dir: /app
+    env_file: [.env]
+    environment:
+      PIPELINE_REGIONS: "Île-de-France"
+      PIPELINE_MODE: buy
+      PIPELINE_PRICE_MIN: "50000"
+      PIPELINE_PRICE_MAX: "700000"
+      LBC_PROGRESS_FILE: /app/data/lbc_progress_worker1.json
+      SCRAPER_VPN_DOCKER_NORDVPN: 1
+      SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER: nordvpn-worker-1
+      SCRAPER_VPN_CONNECT_COUNTRY: France
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "echo '[1/5] Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on: [nordvpn-1]
+
+  scraper-2:
+    image: python:3.12-slim
+    container_name: immo-scraper-2
+    network_mode: "service:nordvpn-2"
+    volumes: [.:/app, /var/run/docker.sock:/var/run/docker.sock]
+    working_dir: /app
+    env_file: [.env]
+    environment:
+      PIPELINE_REGIONS: "Île-de-France"
+      PIPELINE_MODE: buy
+      PIPELINE_PRICE_MIN: "50000"
+      PIPELINE_PRICE_MAX: "700000"
+      LBC_PROGRESS_FILE: /app/data/lbc_progress_worker2.json
+      SCRAPER_VPN_DOCKER_NORDVPN: 1
+      SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER: nordvpn-worker-2
+      SCRAPER_VPN_CONNECT_COUNTRY: France
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "echo '[2/5] Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on: [nordvpn-2]
+
+  scraper-3:
+    image: python:3.12-slim
+    container_name: immo-scraper-3
+    network_mode: "service:nordvpn-3"
+    volumes: [.:/app, /var/run/docker.sock:/var/run/docker.sock]
+    working_dir: /app
+    env_file: [.env]
+    environment:
+      PIPELINE_REGIONS: "Normandie"
+      PIPELINE_MODE: buy
+      PIPELINE_PRICE_MIN: "50000"
+      PIPELINE_PRICE_MAX: "700000"
+      LBC_PROGRESS_FILE: /app/data/lbc_progress_worker3.json
+      SCRAPER_VPN_DOCKER_NORDVPN: 1
+      SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER: nordvpn-worker-3
+      SCRAPER_VPN_CONNECT_COUNTRY: France
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "echo '[3/5] Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on: [nordvpn-3]
+
+  scraper-4:
+    image: python:3.12-slim
+    container_name: immo-scraper-4
+    network_mode: "service:nordvpn-4"
+    volumes: [.:/app, /var/run/docker.sock:/var/run/docker.sock]
+    working_dir: /app
+    env_file: [.env]
+    environment:
+      PIPELINE_REGIONS: "Normandie"
+      PIPELINE_MODE: buy
+      PIPELINE_PRICE_MIN: "50000"
+      PIPELINE_PRICE_MAX: "700000"
+      LBC_PROGRESS_FILE: /app/data/lbc_progress_worker4.json
+      SCRAPER_VPN_DOCKER_NORDVPN: 1
+      SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER: nordvpn-worker-4
+      SCRAPER_VPN_CONNECT_COUNTRY: France
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "echo '[4/5] Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on: [nordvpn-4]
+
+  scraper-5:
+    image: python:3.12-slim
+    container_name: immo-scraper-5
+    network_mode: "service:nordvpn-5"
+    volumes: [.:/app, /var/run/docker.sock:/var/run/docker.sock]
+    working_dir: /app
+    env_file: [.env]
+    environment:
+      PIPELINE_REGIONS: "Hauts-de-France"
+      PIPELINE_MODE: buy
+      PIPELINE_PRICE_MIN: "50000"
+      PIPELINE_PRICE_MAX: "700000"
+      LBC_PROGRESS_FILE: /app/data/lbc_progress_worker5.json
+      SCRAPER_VPN_DOCKER_NORDVPN: 1
+      SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER: nordvpn-worker-5
+      SCRAPER_VPN_CONNECT_COUNTRY: France
+      PYTHONUNBUFFERED: 1
+    command: >
+      sh -c "echo '[5/5] Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on: [nordvpn-5]

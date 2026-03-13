@@ -21,7 +21,7 @@ Si le site est hébergé en serverless (ex. Vercel), le processus ne tourne pas 
    ```
    et définir la variable d’environnement `CRON_SECRET` sur Vercel. Appeler l’URL avec `?secret=VOTRE_CRON_SECRET` (ou en en-tête `Authorization: Bearer VOTRE_CRON_SECRET`).
 
-2. **Cron système** (ex. Planificateur de tâches Windows) : une fois par jour, appeler :
+2. **Cron système** (Linux) : une fois par jour, appeler :
    ```text
    https://votre-domaine.com/api/cron/pipeline?secret=VOTRE_CRON_SECRET
    ```
@@ -30,14 +30,8 @@ Si le site est hébergé en serverless (ex. Vercel), le processus ne tourne pas 
 
 En ligne de commande, à la racine du projet :
 
-```cmd
-python scripts/pipeline.py
-```
-
-ou :
-
-```cmd
-python scripts/run_pipeline.py
+```bash
+python3 scripts/pipeline.py
 ```
 
 En fin d’exécution, la pipeline affiche **la durée totale** et le nombre de listings :

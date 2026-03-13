@@ -91,8 +91,10 @@ export async function GET(request: Request) {
         const listingType = searchParams.get('listingType') || 'buy';
         const propertyKind = searchParams.get('propertyKind');
         const postalCode = searchParams.get('postalCode');
-        const minPrice = searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : undefined;
-        const maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : undefined;
+        let minPrice = searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : undefined;
+        let maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : undefined;
+        // Default: exclude buy listings below 50k (scraping noise: "recherche", "1€", etc.)
+        if (listingType === 'buy' && minPrice == null) minPrice = 50_000;
         const minSurface = searchParams.get('minSurface') ? Number(searchParams.get('minSurface')) : undefined;
         const minYield = searchParams.get('minYield') ? Number(searchParams.get('minYield')) : undefined;
         const minCashflow = searchParams.get('minCashflow') ? Number(searchParams.get('minCashflow')) : undefined;
