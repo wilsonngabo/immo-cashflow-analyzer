@@ -114,26 +114,37 @@ export function getProfileBasedFinancials(
     };
 }
 
+export interface BestCaseFinancials {
+    yieldBrut: number;
+    yieldNet: number;
+    /** Standard location cashflow (best tax regime) */
+    monthlyCashFlowNetNet: number;
+    bestMode: string;
+    bestModeLabel: string;
+    /** Colocation cashflow (if 2+ bedrooms), best tax regime */
+    monthlyCashFlowNetNetColoc: number | null;
+    bestModeLabelColoc: string | null;
+    /** Best-case = max(location, coloc) with 0 vacancy */
+    bestCaseCashflow: number;
+    bestCaseLabel: string;
+    /** Standard location cashflow with 0 vacancy */
+    cfLocation0Vac: number;
+    /** Coloc cashflow with 0 vacancy (null if < 2 bedrooms) */
+    cfColoc0Vac: number | null;
+}
+
 /**
- * Same as getProfileBasedFinancials but chooses the tax regime that maximizes net cashflow.
- * Returns the best regime key and its label for display.
- * Optionally returns coloc cashflow when the property has 2+ chambres.
+ * Computes financials across all tax regimes and picks the best.
+ * Returns standard CF, coloc CF, and best-case (0 vacancy, best of coloc/location).
  */
 export function getBestTaxRegimeFinancials(
     p: Property,
     profile: UserProfile
-): {
-    yieldBrut: number;
-    yieldNet: number;
-    monthlyCashFlowNetNet: number;
-    bestMode: string;
-    bestModeLabel: string;
-    /** Cashflow net en colocation (si 2+ chambres), avec le même meilleur régime */
-    monthlyCashFlowNetNetColoc: number | null;
-    bestModeLabelColoc: string | null;
-} {
+): BestCaseFinancials {
     const data = buildInvestmentDataFromProperty(p, profile);
     const allResults = calculateAllFiscalModes(data);
+
+    // Find best tax regime for standard location
     let bestMode = 'LMNP_MICRO';
     let bestNetNet = allResults[bestMode]!.monthlyCashFlowNetNet;
     for (const [mode, res] of Object.entries(allResults)) {
@@ -144,15 +155,31 @@ export function getBestTaxRegimeFinancials(
     }
     const results = allResults[bestMode]!;
 
+    // 0 vacancy location
+    const data0Vac = { ...data, vacancyMonth: 0 };
+    const res0Vac = calculateFinancials(data0Vac, bestMode);
+    const cfLocation0Vac = res0Vac.monthlyCashFlowNetNet;
+
+    // Colocation
     let monthlyCashFlowNetNetColoc: number | null = null;
+    let cfColoc0Vac: number | null = null;
     if (canBeColoc(p)) {
         const colocRent = getColocMonthlyRent(data.monthlyRent, p);
         if (colocRent != null) {
             const dataColoc = { ...data, monthlyRent: colocRent };
             const resColoc = calculateFinancials(dataColoc, bestMode);
             monthlyCashFlowNetNetColoc = resColoc.monthlyCashFlowNetNet;
+            const dataColoc0Vac = { ...dataColoc, vacancyMonth: 0 };
+            const resColoc0Vac = calculateFinancials(dataColoc0Vac, bestMode);
+            cfColoc0Vac = resColoc0Vac.monthlyCashFlowNetNet;
         }
     }
+
+    // Best case = max of all 0-vacancy scenarios
+    const candidates = [cfLocation0Vac];
+    if (cfColoc0Vac != null) candidates.push(cfColoc0Vac);
+    const bestCaseCashflow = Math.max(...candidates);
+    const bestCaseLabel = cfColoc0Vac != null && cfColoc0Vac >= cfLocation0Vac ? 'Coloc' : 'Location';
 
     return {
         yieldBrut: results.yieldBrut,
@@ -162,5 +189,9 @@ export function getBestTaxRegimeFinancials(
         bestModeLabel: FISCAL_MODE_LABELS[bestMode] ?? bestMode,
         monthlyCashFlowNetNetColoc,
         bestModeLabelColoc: monthlyCashFlowNetNetColoc != null ? (FISCAL_MODE_LABELS[bestMode] ?? bestMode) : null,
+        bestCaseCashflow: Math.round(bestCaseCashflow),
+        bestCaseLabel,
+        cfLocation0Vac: Math.round(cfLocation0Vac),
+        cfColoc0Vac: cfColoc0Vac != null ? Math.round(cfColoc0Vac) : null,
     };
 }

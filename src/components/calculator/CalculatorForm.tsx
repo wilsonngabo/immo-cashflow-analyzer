@@ -25,9 +25,11 @@ interface CalculatorFormProps {
     onModeChange: (newMode: string) => void;
     /** Estimation de loyer marché depuis les annonces LBC location en base */
     rentMarket?: { median: number; count: number } | null;
+    /** Navigate to Annonces with rent filters to show the comparable listings */
+    onShowRentListings?: (postalCode: string, surface?: number) => void;
 }
 
-export function CalculatorForm({ data, mode, onDataChange, onModeChange, rentMarket }: CalculatorFormProps) {
+export function CalculatorForm({ data, mode, onDataChange, onModeChange, rentMarket, onShowRentListings }: CalculatorFormProps) {
     const [isOpenAcq, setIsOpenAcq] = useState(true);
     const [isOpenFin, setIsOpenFin] = useState(true);
     const [isOpenExp, setIsOpenExp] = useState(true);
@@ -466,9 +468,21 @@ export function CalculatorForm({ data, mode, onDataChange, onModeChange, rentMar
                                 onChange={(e) => handleChange('monthlyRent', parseFloat(e.target.value) || 0)}
                             />
                             {rentMarket && rentMarket.count >= 3 && (
-                                <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1 flex items-center gap-1">
+                                <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1 flex items-center gap-1 flex-wrap">
                                     <span>📊</span>
-                                    <span>Marché locatif LBC : <strong>{rentMarket.median} €/mois</strong> médiane ({rentMarket.count} annonces similaires)</span>
+                                    <span>Marché locatif LBC : <strong>{rentMarket.median} €/mois</strong> médiane (</span>
+                                    {onShowRentListings && data.postalCode ? (
+                                        <button
+                                            type="button"
+                                            className="underline font-semibold text-emerald-700 hover:text-emerald-900"
+                                            onClick={() => onShowRentListings(data.postalCode!, data.surface)}
+                                        >
+                                            {rentMarket.count} annonces similaires
+                                        </button>
+                                    ) : (
+                                        <span>{rentMarket.count} annonces similaires</span>
+                                    )}
+                                    <span>)</span>
                                     {data.monthlyRent !== rentMarket.median && (
                                         <button
                                             type="button"

@@ -15,18 +15,16 @@ const DEPT_FROM_POSTAL_SQL = `(CASE
   ELSE SUBSTR(postalCode, 1, 2)
 END)`;
 
-/** Exclure les achats viager ou terrain seul (pour le filtre "achat"). */
-function isViagerOrTerrainOnly(p: Property): boolean {
-    if (p.listingType !== 'buy') return false;
+/** Exclure viager, terrain seul, et propriétés non-résidentielles. */
+function isExcluded(p: Property): boolean {
     const title = (p.title ?? '').toLowerCase();
     const desc = (p.description ?? '').toLowerCase();
     const text = `${title} ${desc}`;
     if (/viager/.test(text)) return true;
+    if (p.propertyKind === 'other') return true;
     const surface = p.surface ?? 0;
-    const noHabitableSurface = surface <= 0 || surface < 15;
-    const looksLikeLand = /terrain\s*(seul|à bâtir|constructible|nu)|vente\s*terrain|lotissement/.test(text)
-        || (p.propertyKind === 'other' && noHabitableSurface);
-    if (noHabitableSurface && looksLikeLand) return true;
+    const looksLikeLand = /terrain\s*(seul|à bâtir|constructible|nu)|vente\s*terrain|lotissement/.test(text);
+    if (looksLikeLand && (surface <= 0 || surface < 15)) return true;
     return false;
 }
 
@@ -76,6 +74,7 @@ const ALLOWED_SORT: Record<string, string> = {
     scrapedAt: 'scrapedAt',
     price: 'price',
     surface: 'surface',
+    pricePerSqm: 'pricePerSqm',
     estimatedYield: 'estimatedYield',
     estimatedCashflow: 'estimatedCashflow',
 };
@@ -90,6 +89,7 @@ export async function GET(request: Request) {
         const source = searchParams.get('source');
         const ownerType = searchParams.get('ownerType');
         const listingType = searchParams.get('listingType') || 'buy';
+        const propertyKind = searchParams.get('propertyKind');
         const postalCode = searchParams.get('postalCode');
         const minPrice = searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : undefined;
         const maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : undefined;
@@ -106,9 +106,20 @@ export async function GET(request: Request) {
             const conditions: string[] = ['1=1'];
             const params: any[] = [];
 
-            if (listingType && listingType !== 'all') { conditions.push('listingType = ?'); params.push(listingType); }
+            if (listingType === 'colocation') {
+                conditions.push("listingType = 'rent'");
+                conditions.push("(LOWER(COALESCE(title,'')) || ' ' || LOWER(COALESCE(description,''))) LIKE '%coloc%'");
+            } else if (listingType === 'rent') {
+                conditions.push("listingType = 'rent'");
+                conditions.push("(LOWER(COALESCE(title,'')) || ' ' || LOWER(COALESCE(description,''))) NOT LIKE '%coloc%'");
+            } else if (listingType && listingType !== 'all') {
+                conditions.push('listingType = ?'); params.push(listingType);
+            }
+            if (propertyKind && propertyKind !== 'all') { conditions.push('propertyKind = ?'); params.push(propertyKind); }
             if (source && source !== 'all') { conditions.push('source = ?'); params.push(source); }
             if (ownerType && ownerType !== 'all') { conditions.push('ownerType = ?'); params.push(ownerType); }
+            conditions.push("propertyKind IN ('apartment', 'house')");
+            conditions.push("(COALESCE(title,'') || ' ' || COALESCE(description,'')) NOT LIKE '%viager%'");
             if (regionName && regionName !== 'all') {
                 // Optimisation : filtre par colonne region (index) si disponible
                 conditions.push('(region = ? OR (region IS NULL AND ' + DEPT_FROM_POSTAL_SQL + ' IN (' + (REGIONS[regionName]?.map(() => '?') ?? []).join(',') + ')))');
@@ -125,9 +136,6 @@ export async function GET(request: Request) {
             if (minSurface != null) { conditions.push('surface >= ?'); params.push(minSurface); }
             if (minYield != null) { conditions.push('(COALESCE(estimatedYield, 0) >= ?)'); params.push(minYield); }
             if (minCashflow != null) { conditions.push('(COALESCE(estimatedCashflow, 0) >= ?)'); params.push(minCashflow); }
-            if (listingType === 'buy') {
-                conditions.push("(listingType <> 'buy' OR ( (COALESCE(title,'') || ' ' || COALESCE(description,'')) NOT LIKE '%viager%' AND (surface IS NULL OR surface >= 15) ))");
-            }
 
             const whereSql = conditions.join(' AND ');
             const countStmt = db.prepare(`SELECT COUNT(*) AS c FROM properties WHERE ${whereSql}`);
@@ -142,7 +150,7 @@ export async function GET(request: Request) {
             const rows = dataStmt.all(...params, pageSize, offset) as any[];
             let properties = rows.map(normalizeRow);
             properties = augmentProperties(properties);
-            if (listingType === 'buy') properties = properties.filter(p => !isViagerOrTerrainOnly(p));
+            properties = properties.filter(p => !isExcluded(p));
 
             const countForStats = total;
             const statsStmt = db.prepare(
@@ -177,6 +185,8 @@ export async function GET(request: Request) {
                     if (listingType && listingType !== 'all' && p.listingType !== listingType) return false;
                     if (source && source !== 'all' && p.source !== source) return false;
                     if (ownerType && ownerType !== 'all' && p.ownerType !== ownerType) return false;
+                    if (propertyKind && propertyKind !== 'all' && p.propertyKind !== propertyKind) return false;
+                    if (p.propertyKind !== 'apartment' && p.propertyKind !== 'house') return false;
                     if (regionName && regionName !== 'all') {
                         if (getRegionForDepartment(getDepartmentCode(p.postalCode) ?? '') !== regionName) return false;
                     } else if (department && department !== 'all') {
@@ -190,7 +200,7 @@ export async function GET(request: Request) {
                     return true;
                 });
                 properties = augmentProperties(properties);
-                if (listingType === 'buy') properties = properties.filter(p => !isViagerOrTerrainOnly(p));
+                properties = properties.filter(p => !isExcluded(p));
                 if (regionName && regionName !== 'all') properties = properties.filter(p => p.region === regionName);
                 if (minYield != null) properties = properties.filter(p => (p.estimatedYield ?? 0) >= minYield);
                 if (minCashflow != null) properties = properties.filter(p => (p.estimatedCashflow ?? -9999) >= minCashflow);

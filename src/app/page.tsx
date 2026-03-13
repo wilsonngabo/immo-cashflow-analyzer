@@ -66,6 +66,7 @@ export default function Home() {
   const [allResults, setAllResults] = useState<Record<string, FinancialResults>>({});
   const [simulations, setSimulations] = useState<SavedSimulation[]>([]);
   const [activeView, setActiveView] = useState<'calculator' | 'browser'>('calculator');
+  const [browserFilters, setBrowserFilters] = useState<Record<string, string> | null>(null);
 
   // Recalculate whenever data or mode changes
   useEffect(() => {
@@ -222,8 +223,10 @@ export default function Home() {
                 handleImport(partial);
                 if (options?.fiscalMode) setMode(options.fiscalMode);
                 if (options?.rentMarketInfo !== undefined) setRentMarket(options.rentMarketInfo ?? null);
+                setBrowserFilters(null);
                 setActiveView('calculator');
               }}
+              initialFilters={browserFilters}
             />
           ) : (
             <>
@@ -291,6 +294,17 @@ export default function Home() {
                         onDataChange={setData}
                         onModeChange={setMode}
                         rentMarket={rentMarket}
+                        onShowRentListings={(postalCode, surface) => {
+                          const filters: Record<string, string> = {
+                            listingType: 'rent',
+                            postalCode,
+                          };
+                          if (surface && surface > 0) {
+                            filters.minSurface = String(Math.round(surface * 0.6));
+                          }
+                          setBrowserFilters(filters);
+                          setActiveView('browser');
+                        }}
                       />
                     </CardContent>
                   </Card>

@@ -19,6 +19,7 @@ import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxR
 
 interface PropertyBrowserProps {
     onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string; rentMarketInfo?: { median: number; count: number } | null }) => void;
+    initialFilters?: Record<string, string> | null;
 }
 
 interface DBStats {
@@ -54,7 +55,7 @@ function fallbackYieldCashflow(price: number): { yield: number; cf: number } {
     return { yield: y, cf: Math.round(cf) };
 }
 
-export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
+export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserProps) {
     const { profile, isLoaded } = useProfile();
     const [properties, setProperties] = useState<Property[]>([]);
     const [stats, setStats] = useState<DBStats | null>(null);
@@ -78,6 +79,8 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
     const [filterMinCashflow, setFilterMinCashflow] = useState('');
     const [filterSource, setFilterSource] = useState('all');
     const [filterOwnerType, setFilterOwnerType] = useState('all');
+    const [filterListingType, setFilterListingType] = useState('buy');
+    const [filterPropertyKind, setFilterPropertyKind] = useState('all');
     const [sortBy, setSortBy] = useState('scrapedAt');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -103,7 +106,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                 pageSize: '24',
                 sortBy,
                 sortDir,
-                listingType: 'buy',
+                listingType: filterListingType,
             });
             if (filterRegion !== 'all') {
                 params.set('region', filterRegion);
@@ -118,6 +121,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             if (filterMinCashflow) params.set('minCashflow', filterMinCashflow);
             if (filterSource !== 'all') params.set('source', filterSource);
             if (filterOwnerType !== 'all') params.set('ownerType', filterOwnerType);
+            if (filterPropertyKind !== 'all') params.set('propertyKind', filterPropertyKind);
 
             const res = await fetch(`/api/properties?${params}`);
             const json = await res.json();
@@ -140,7 +144,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         } finally {
             setLoading(false);
         }
-    }, [filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
+    }, [filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, filterListingType, filterPropertyKind, sortBy, sortDir]);
 
     // Ré-ordonner par le cashflow/renta affiché (meilleur régime) pour que l'ordre corresponde à l'écran
     const displayedProperties = useMemo(() => {
@@ -148,10 +152,10 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         if (sortBy === 'estimatedCashflow' && isLoaded && profile) {
             return [...properties].sort((a, b) => {
                 const cfA = (a.listingType === 'buy' && a.price > 0 && (a.surface || a.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(a, profile).monthlyCashFlowNetNet
+                    ? getBestTaxRegimeFinancials(a, profile).bestCaseCashflow
                     : (a.estimatedCashflow ?? 0);
                 const cfB = (b.listingType === 'buy' && b.price > 0 && (b.surface || b.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(b, profile).monthlyCashFlowNetNet
+                    ? getBestTaxRegimeFinancials(b, profile).bestCaseCashflow
                     : (b.estimatedCashflow ?? 0);
                 return sortDir === 'desc' ? cfB - cfA : cfA - cfB;
             });
@@ -185,8 +189,12 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
         const minCf = searchParams.get('minCashflow');
         const src = searchParams.get('source');
         const own = searchParams.get('ownerType');
+        const pk = searchParams.get('propertyKind');
+        const lt = searchParams.get('listingType');
         const sort = searchParams.get('sortBy');
         const dir = searchParams.get('sortDir');
+        if (pk != null) setFilterPropertyKind(pk);
+        if (lt != null) setFilterListingType(lt);
         if (r != null) setFilterRegion(r);
         if (d != null) setFilterDepartment(d);
         if (c != null) setFilterCity(c);
@@ -225,6 +233,17 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             .catch(console.error);
     }, [filterDepartment]);
 
+    // Apply programmatic filters (e.g. from "voir annonces similaires")
+    useEffect(() => {
+        if (!initialFilters) return;
+        if (initialFilters.listingType) setFilterListingType(initialFilters.listingType);
+        if (initialFilters.postalCode) setFilterPostalCode(initialFilters.postalCode);
+        if (initialFilters.minSurface) setFilterMinSurface(initialFilters.minSurface);
+        if (initialFilters.propertyKind) setFilterPropertyKind(initialFilters.propertyKind);
+        if (initialFilters.region) setFilterRegion(initialFilters.region);
+        if (initialFilters.department) setFilterDepartment(initialFilters.department);
+    }, [initialFilters]);
+
     // Debounced fetch: wait 400ms after last filter change so typing is seamless
     useEffect(() => {
         const t = setTimeout(() => {
@@ -249,6 +268,8 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             if (filterMinCashflow) p.set('minCashflow', filterMinCashflow);
             if (filterSource !== 'all') p.set('source', filterSource);
             if (filterOwnerType !== 'all') p.set('ownerType', filterOwnerType);
+            if (filterPropertyKind !== 'all') p.set('propertyKind', filterPropertyKind);
+            if (filterListingType !== 'buy') p.set('listingType', filterListingType);
             if (sortBy !== 'scrapedAt') p.set('sortBy', sortBy);
             if (sortDir !== 'desc') p.set('sortDir', sortDir);
             const q = p.toString();
@@ -256,7 +277,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             router.replace(url, { scroll: false });
         }, 500);
         return () => clearTimeout(t);
-    }, [pathname, router, filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, sortBy, sortDir]);
+    }, [pathname, router, filterRegion, filterDepartment, filterCity, filterPostalCode, filterMinPrice, filterMaxPrice, filterMinSurface, filterMinYield, filterMinCashflow, filterSource, filterOwnerType, filterPropertyKind, filterListingType, sortBy, sortDir]);
 
     // Fetch DVF median price
     useEffect(() => {
@@ -379,6 +400,33 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
             {/* Filter bar - toujours visible pour pouvoir modifier les critères */}
             <div className="flex flex-wrap gap-2 items-end">
                     <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Type</Label>
+                        <Select value={filterListingType} onValueChange={setFilterListingType}>
+                            <SelectTrigger className="h-8 text-xs w-28">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="buy">Achat</SelectItem>
+                                <SelectItem value="rent">Location</SelectItem>
+                                <SelectItem value="colocation">Colocation</SelectItem>
+                                <SelectItem value="all">Tout</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Bien</Label>
+                        <Select value={filterPropertyKind} onValueChange={setFilterPropertyKind}>
+                            <SelectTrigger className="h-8 text-xs w-32">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Tous</SelectItem>
+                                <SelectItem value="apartment">Appartement</SelectItem>
+                                <SelectItem value="house">Maison</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
                         <Label className="text-xs text-slate-500">Région</Label>
                         <Select value={filterRegion} onValueChange={(v) => {
                             setFilterRegion(v);
@@ -493,7 +541,7 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                 <SelectItem value="surface">Surface</SelectItem>
                                 <SelectItem value="pricePerSqm">Prix/m²</SelectItem>
                                 <SelectItem value="estimatedYield">Rentabilité Brute</SelectItem>
-                                <SelectItem value="estimatedCashflow">Cashflow Net</SelectItem>
+                                <SelectItem value="estimatedCashflow">Cashflow (Best Case)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -559,6 +607,8 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                 <CardContent className="flex-1 flex flex-col p-4">
                                     <div className="flex flex-wrap gap-1 items-center mb-1.5">
                                         {sourceBadge(p.source)}
+                                        {p.propertyKind === 'apartment' && <span className="text-[10px] bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full font-medium">Appart</span>}
+                                        {p.propertyKind === 'house' && <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">Maison</span>}
                                         {p.source === 'bienveo' && <span className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded-full font-medium">HLM</span>}
                                         {p.ownerType === 'professional' && p.source !== 'bienveo' && <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-medium">Pro</span>}
                                         {p.ownerType === 'private' && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">Particulier</span>}
@@ -602,17 +652,20 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                             const f = getBestTaxRegimeFinancials(p, profile);
                                             return (
                                                 <>
-                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{f.yieldBrut.toFixed(1)}% Renta</span>
-                                                    <span className={`px-1.5 py-0.5 rounded font-medium ${f.monthlyCashFlowNetNet > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                                        {f.monthlyCashFlowNetNet > 0 ? '+' : ''}{Math.round(f.monthlyCashFlowNetNet)}€ CF
+                                                    <span className={`px-1.5 py-0.5 rounded font-semibold ${f.bestCaseCashflow > 0 ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300' : 'bg-red-100 text-red-700 ring-1 ring-red-300'}`} title={`Best case (0 vacance, ${f.bestCaseLabel})`}>
+                                                        {f.bestCaseCashflow > 0 ? '+' : ''}{f.bestCaseCashflow}€ CF
                                                     </span>
-                                                    <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${f.monthlyCashFlowNetNetColoc != null
-                                                        ? (f.monthlyCashFlowNetNetColoc > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600')
-                                                        : 'bg-slate-100 text-slate-400'
-                                                    }`} title={f.monthlyCashFlowNetNetColoc != null ? 'Cashflow net en colocation (loyer × 1,28)' : 'Moins de 2 chambres'}>
-                                                        {f.monthlyCashFlowNetNetColoc != null ? `${f.monthlyCashFlowNetNetColoc > 0 ? '+' : ''}${Math.round(f.monthlyCashFlowNetNetColoc)}€` : '—'} coloc
+                                                    <span className="text-[9px] text-slate-500">{f.bestCaseLabel}</span>
+                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{f.yieldBrut.toFixed(1)}%</span>
+                                                    <span className="text-[9px] text-slate-500 border border-slate-200 px-1 py-0.5 rounded">{f.bestModeLabel}</span>
+                                                    {f.cfColoc0Vac != null && (
+                                                        <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${f.cfColoc0Vac > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600'}`} title="Coloc (0 vacance)">
+                                                            {f.cfColoc0Vac > 0 ? '+' : ''}{f.cfColoc0Vac}€ coloc
+                                                        </span>
+                                                    )}
+                                                    <span className={`px-1 py-0.5 rounded text-[9px] ${f.cfLocation0Vac > 0 ? 'text-emerald-600' : 'text-red-500'}`} title="Location classique (0 vacance)">
+                                                        {f.cfLocation0Vac > 0 ? '+' : ''}{f.cfLocation0Vac}€ loc
                                                     </span>
-                                                    <span className="text-[9px] text-slate-500 border border-slate-200 px-1 py-0.5 rounded" title="Régime fiscal pour ce CF net">{f.bestModeLabel}</span>
                                                 </>
                                             );
                                         })() : p.listingType === 'buy' && p.price > 0 ? (() => {
@@ -620,14 +673,22 @@ export function PropertyBrowser({ onAnalyze }: PropertyBrowserProps) {
                                             const cf = p.estimatedCashflow ?? fallbackYieldCashflow(p.price).cf;
                                             const canColoc = (p.bedrooms != null && p.bedrooms >= 2) || (p.rooms != null && p.rooms >= 3);
                                             const cfColoc = canColoc ? Math.round(cf * 1.28) : null;
+                                            const bestCf = cfColoc != null ? Math.max(cf, cfColoc) : cf;
+                                            const bestLabel = cfColoc != null && cfColoc > cf ? 'Coloc' : 'Location';
                                             return (
                                                 <>
-                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{y}% Renta</span>
-                                                    <span className={`px-1.5 py-0.5 rounded font-medium ${cf > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                                        {cf > 0 ? '+' : ''}{cf}€ CF
+                                                    <span className={`px-1.5 py-0.5 rounded font-semibold ${bestCf > 0 ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300' : 'bg-red-100 text-red-700 ring-1 ring-red-300'}`}>
+                                                        {bestCf > 0 ? '+' : ''}{bestCf}€ CF
                                                     </span>
-                                                    <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${cfColoc != null ? (cfColoc > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600') : 'bg-slate-100 text-slate-400'}`}>
-                                                        {cfColoc != null ? `${cfColoc > 0 ? '+' : ''}${cfColoc}€` : '—'} coloc
+                                                    <span className="text-[9px] text-slate-500">{bestLabel}</span>
+                                                    <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">{y}%</span>
+                                                    {cfColoc != null && (
+                                                        <span className={`px-1.5 py-0.5 rounded font-medium text-[9px] ${cfColoc > 0 ? 'bg-violet-50 text-violet-700' : 'bg-red-50 text-red-600'}`}>
+                                                            {cfColoc > 0 ? '+' : ''}{cfColoc}€ coloc
+                                                        </span>
+                                                    )}
+                                                    <span className={`px-1 py-0.5 rounded text-[9px] ${cf > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                        {cf > 0 ? '+' : ''}{cf}€ loc
                                                     </span>
                                                 </>
                                             );

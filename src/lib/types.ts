@@ -77,7 +77,7 @@ export interface FinancialResults {
 // ─── Property Database ────────────────────────────────────────────────────────
 
 export type PropertyListingType = 'buy' | 'rent';
-export type PropertySource = 'leboncoin' | 'seloger';
+export type PropertySource = 'leboncoin' | 'seloger' | 'bienveo';
 export type PropertyKind = 'apartment' | 'house' | 'other';
 
 export interface Property {
