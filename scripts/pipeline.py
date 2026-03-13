@@ -2,18 +2,19 @@
 """
 Unified pipeline: Bienveo first, then incremental LeBonCoin across France.
 
+VPN is MANDATORY by default — the pipeline refuses to start without NordVPN.
+This protects your personal IP from being exposed to scraped websites.
+
 Phase 1 — Bienveo: fast, reliable, writes directly to SQLite.
-Phase 2 — LBC: incremental per dept+tranche, resumable.
-           With --vpn: rotates NordVPN on blocks, ~3h for all France.
-           Without --vpn: exponential backoff, stops after 5 blocks.
+Phase 2 — LBC: incremental per dept+tranche, resumable, VPN rotation on blocks.
 
 Usage:
-    python scripts/pipeline.py                                  # Full (bienveo + LBC)
-    python scripts/pipeline.py --lbc-only --vpn                 # LBC with NordVPN rotation
-    python scripts/pipeline.py --lbc-only --vpn --shutdown      # + auto shutdown when done
-    python scripts/pipeline.py --bienveo-only                   # Bienveo only
-    PIPELINE_MODE=buy python scripts/pipeline.py --lbc-only --vpn
-    LBC_RESUME=0 python scripts/pipeline.py --lbc-only --vpn    # Reset progress
+    python scripts/pipeline.py                                  # Full (bienveo + LBC via VPN)
+    python scripts/pipeline.py --lbc-only                       # LBC only via VPN
+    python scripts/pipeline.py --lbc-only --shutdown            # + auto shutdown when done
+    python scripts/pipeline.py --bienveo-only                   # Bienveo only via VPN
+    PIPELINE_MODE=buy python scripts/pipeline.py --lbc-only
+    LBC_RESUME=0 python scripts/pipeline.py --lbc-only          # Reset progress
 """
 
 import os
@@ -92,43 +93,65 @@ def get_price_ranges(listing_type: str) -> list[tuple[int, int]]:
 
 def rotate_vpn() -> bool:
     """Disconnect and reconnect NordVPN to a French server for a fresh IP.
-    Returns True if reconnection succeeded."""
+    Returns True if reconnection succeeded. Retries up to 3 times."""
     print("    [VPN] Rotating to new French server...")
     try:
         subprocess.run([NORDVPN_CLI, "-d"], capture_output=True, timeout=10)
     except Exception:
         pass
     time.sleep(3)
-    try:
-        result = subprocess.run(
-            [NORDVPN_CLI, "-c", "-g", "France"],
-            capture_output=True, timeout=30, text=True,
-        )
+
+    for attempt in range(3):
+        try:
+            subprocess.run([NORDVPN_CLI, "-c", "-g", "France"],
+                           capture_output=True, timeout=30, text=True)
+            time.sleep(5)
+            if is_vpn_connected():
+                print("    [VPN] Connected to new French server")
+                return True
+        except Exception as e:
+            print(f"    [VPN] Rotation attempt {attempt + 1} failed: {e}")
         time.sleep(5)
-        print("    [VPN] Connected to new French server")
-        return True
-    except Exception as e:
-        print(f"    [VPN] Failed to connect: {e}")
-        time.sleep(10)
+
+    print("    [VPN] WARNING: Could not rotate — retrying ensure_vpn_connected")
+    ensure_vpn_connected()
+    return is_vpn_connected()
+
+
+def is_vpn_connected() -> bool:
+    """Check if NordVPN is currently connected."""
+    try:
+        result = subprocess.run([NORDVPN_CLI, "status"],
+                                capture_output=True, timeout=10, text=True)
+        output = (result.stdout + result.stderr).lower()
+        return "connected" in output and "disconnected" not in output
+    except Exception:
+        return False
+
+
+def ensure_vpn_connected():
+    """Make sure NordVPN is connected to France before starting.
+    Raises SystemExit if unable to connect — never scrape on personal IP."""
+    if is_vpn_connected():
+        print("[VPN] Already connected")
+        return
+
+    print("[VPN] Not connected — connecting to France...")
+    for attempt in range(3):
         try:
             subprocess.run([NORDVPN_CLI, "-c", "-g", "France"],
                            capture_output=True, timeout=30)
             time.sleep(5)
-            return True
-        except Exception:
-            return False
+            if is_vpn_connected():
+                print("[VPN] Connected to France")
+                return
+        except Exception as e:
+            print(f"[VPN] Connection attempt {attempt + 1} failed: {e}")
+            time.sleep(5)
 
-
-def ensure_vpn_connected():
-    """Make sure NordVPN is connected to France before starting."""
-    print("[VPN] Ensuring connection to France...")
-    try:
-        subprocess.run([NORDVPN_CLI, "-c", "-g", "France"],
-                       capture_output=True, timeout=30)
-        time.sleep(5)
-        print("[VPN] Connected")
-    except Exception as e:
-        print(f"[VPN] Warning: could not connect: {e}")
+    print("[VPN] FATAL: Could not connect to VPN after 3 attempts.")
+    print("[VPN] Refusing to scrape without VPN to protect your IP.")
+    sys.exit(1)
 
 
 # ─── SQLite helpers ──────────────────────────────────────────────────────────
@@ -522,9 +545,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pipeline: Bienveo + LBC scraper")
     parser.add_argument("--bienveo-only", action="store_true", help="Run Bienveo only")
     parser.add_argument("--lbc-only", action="store_true", help="Run LBC only")
-    parser.add_argument("--vpn", action="store_true", help="Enable NordVPN IP rotation on blocks")
+    parser.add_argument("--no-vpn", action="store_true", help="DANGEROUS: skip VPN (exposes personal IP)")
     parser.add_argument("--shutdown", action="store_true", help="Shutdown PC when scraping is done")
     args = parser.parse_args()
+
+    use_vpn = not args.no_vpn
 
     mode = os.environ.get("PIPELINE_MODE", "buy,rent").strip()
     listing_types = [t.strip() for t in mode.split(",") if t.strip() in ("buy", "rent")]
@@ -535,8 +560,11 @@ def main() -> None:
     run_bienveo_phase = not args.lbc_only
     run_lbc_phase = not args.bienveo_only
 
-    if args.vpn:
+    # VPN is mandatory by default — protects personal IP
+    if use_vpn:
         ensure_vpn_connected()
+    else:
+        print("[!] WARNING: Running WITHOUT VPN — your personal IP is exposed!")
 
     prevent_sleep()
 
@@ -545,14 +573,18 @@ def main() -> None:
 
     # ─── Phase 1: Bienveo ────────────────────────────────────────────────
     if run_bienveo_phase:
+        if use_vpn and not is_vpn_connected():
+            ensure_vpn_connected()
         run_bienveo(conn, listing_types)
 
     # ─── Phase 2: LBC (with auto-retry on crash) ────────────────────────
     if run_lbc_phase:
-        max_retries = 50 if args.vpn else 3
+        max_retries = 50
         for attempt in range(1, max_retries + 1):
             try:
-                run_lbc(conn, listing_types, resume=True, use_vpn=args.vpn)
+                if use_vpn and not is_vpn_connected():
+                    ensure_vpn_connected()
+                run_lbc(conn, listing_types, resume=True, use_vpn=use_vpn)
                 break
             except KeyboardInterrupt:
                 print("\n[!] Interrupted by user. Progress saved.")
@@ -563,8 +595,7 @@ def main() -> None:
                 if attempt < max_retries:
                     print(f"    Retrying in 30s...")
                     time.sleep(30)
-                    if args.vpn:
-                        rotate_vpn()
+                    rotate_vpn()
                     conn.close()
                     conn = open_db()
                 else:
