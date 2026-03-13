@@ -45,3 +45,7 @@ next-env.d.ts
 
 # scraped data (large files, local only)
 /data/
+
+# editor / local
+.cursor/
+client_error_log.txt

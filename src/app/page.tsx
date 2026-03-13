@@ -3,9 +3,8 @@
 import { motion } from 'framer-motion';
 import { useRef } from 'react';
 import Link from 'next/link';
-import { Building2, Calculator, FileText, Search, ChevronDown, ArrowRight, List } from 'lucide-react';
+import { Building2, Calculator, FileText, Search, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { FranceSlideshow } from '@/components/landing/FranceSlideshow';
 import { FranceMap } from '@/components/landing/FranceMap';
 
 const stats = [
@@ -41,85 +40,51 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#FDFCF9] dark:bg-[#141416] text-[#1a1a1a] dark:text-[#F5F3ED] overflow-x-hidden">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-8 py-5 flex items-center justify-between bg-[#FDFCF9]/90 dark:bg-[#141416]/90 backdrop-blur-xl transition-all duration-300">
+      <header className="fixed top-0 left-0 right-0 z-50 px-8 py-5 flex items-center justify-between bg-[#FDFBF7]/95 dark:bg-[#141416]/95 backdrop-blur-xl transition-all duration-300 border-b border-black/5 dark:border-white/5">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-11 h-11 rounded-2xl bg-[#1a1a1a] dark:bg-[#F5F3ED] flex items-center justify-center shadow-lg shadow-black/5 dark:shadow-black/20">
+          <div className="w-11 h-11 rounded-2xl bg-[#1a1a1a] dark:bg-[#F5F3ED] flex items-center justify-center">
             <Building2 className="h-5 w-5 text-[#FDFCF9] dark:text-[#1a1a1a]" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight" >Rendement Immo</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-[#1a1a1a] dark:text-[#F5F3ED]">Rendement Immo</h1>
             <p className="text-xs text-[#1a1a1a]/55 dark:text-[#F5F3ED]/55 tracking-wide">Rentabilité & cashflow immobilier</p>
           </div>
         </Link>
         <div className="flex gap-4 items-center">
           <Link href="/profile">
-            <Button variant="ghost" size="sm" className="text-[#1a1a1a] dark:text-[#F5F3ED] hover:bg-black/5">
+            <Button variant="ghost" size="sm" className="text-[#1a1a1a] dark:text-[#F5F3ED] hover:bg-black/5 dark:hover:bg-white/10">
               Profil
             </Button>
           </Link>
           <Link href="/simulateur">
-            <Button className="bg-[#1a1a1a] dark:bg-[#F5F3ED] text-[#FDFCF9] dark:text-[#1a1a1a] hover:bg-[#2d2d2d] dark:hover:bg-white/90 rounded-full px-6 py-2.5 shadow-lg shadow-black/10">
+            <Button className="bg-[#1a1a1a] dark:bg-[#F5F3ED] text-[#FDFCF9] dark:text-[#1a1a1a] hover:bg-[#2d2d2d] dark:hover:bg-white/90 rounded-full px-6 py-2.5 shadow-lg">
               Accéder au simulateur
             </Button>
           </Link>
         </div>
       </header>
 
-      {/* Hero - fond animé type ogroup.com */}
-      <section ref={heroRef} className="min-h-screen flex flex-col items-center justify-center pt-24 px-6 pb-32 relative text-white overflow-hidden bg-[#1a1a1a]">
-        <FranceSlideshow />
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-          className="text-center max-w-4xl mx-auto relative z-10 px-4"
-        >
-          <h2
-            className="text-5xl sm:text-6xl md:text-7xl font-semibold tracking-tight mb-6 drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)] leading-tight"
-          >
-            Analysez vos investissements immobiliers
-          </h2>
-          <p className="text-xl sm:text-2xl text-white/90 mb-10 max-w-2xl mx-auto drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] leading-relaxed">
-            Rentabilité, cashflow, fiscalité LMNP. Des annonces aux dossiers bancaires.
-          </p>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="flex flex-col sm:flex-row gap-4 sm:gap-5 justify-center items-stretch sm:items-center mt-12 max-w-xl mx-auto"
-          >
-            <Link href="/simulateur" className="flex justify-center">
-              <Button size="lg" className="w-full sm:w-auto bg-white text-[#1a1a1a] hover:bg-white/95 rounded-full px-8 py-6 text-base font-medium gap-2 shadow-2xl shadow-black/20 hover:shadow-black/25 hover:scale-[1.02] transition-all min-w-[220px]">
-                Commencer l&apos;analyse <ArrowRight className="w-5 h-5" />
-              </Button>
-            </Link>
-            <Link href="/simulateur?view=annonces" className="flex justify-center">
-              <Button
-                size="lg"
-                className="w-full sm:w-auto bg-black/50 text-white border-2 border-white/90 hover:bg-white/20 rounded-full px-8 py-6 text-base font-medium gap-2 min-w-[220px]"
-              >
-                <List className="w-5 h-5 shrink-0" />
-                Voir toutes les annonces
-              </Button>
-            </Link>
-          </motion.div>
-        </motion.div>
-
-        {/* Scroll indicator */}
-        <motion.div
+      {/* Hero — carte France plein écran */}
+      <section ref={heroRef} className="relative min-h-screen overflow-hidden flex flex-col pt-20">
+        <FranceMap fullScreen />
+        {/* Scroll indicator — clic pour descendre */}
+        <motion.button
+          type="button"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10"
+          transition={{ delay: 0.8 }}
+          onClick={() => statsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-30 cursor-pointer hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:ring-offset-2 rounded-full p-2"
+          aria-label="Descendre pour découvrir"
         >
-          <span className="text-xs uppercase tracking-[0.3em] text-white/70">Découvrir</span>
+          <span className="text-xs uppercase tracking-[0.3em] text-[#1a1a1a]/50">Découvrir</span>
           <motion.div
             animate={{ y: [0, 8, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
           >
-            <ChevronDown className="w-6 h-6 text-white/70" />
+            <ChevronDown className="w-6 h-6 text-[#1a1a1a]/50" />
           </motion.div>
-        </motion.div>
+        </motion.button>
       </section>
 
       {/* Stats - carte flottante style éditorial */}
@@ -211,15 +176,6 @@ export default function LandingPage() {
               </motion.div>
             ))}
           </div>
-          {/* Carte interactive France */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-16 mb-12"
-          >
-            <FranceMap />
-          </motion.div>
           <motion.div
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
