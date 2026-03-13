@@ -30,6 +30,7 @@ import traceback
 from datetime import datetime
 
 import lbc_scrape
+import rates_scrape
 from regions import REGIONS, DEPARTMENTS, region_slug
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -570,6 +571,19 @@ def main() -> None:
 
     conn = open_db()
     started_at = time.time()
+
+    # ─── Phase 0: Mortgage rates ─────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print(f"[{datetime.now().isoformat()}] Phase 0 — Mortgage Rates (CAFPI)")
+    print("=" * 60)
+    try:
+        rate_data = rates_scrape.run(DB_FILE)
+        if rate_data.get("national"):
+            print(f"  Rates OK: {rate_data['national']}")
+        else:
+            print("  WARNING: Could not fetch live rates — will use cached/fallback")
+    except Exception as e:
+        print(f"  WARNING: Rate scraping failed: {e} — continuing with cached/fallback")
 
     # ─── Phase 1: Bienveo ────────────────────────────────────────────────
     if run_bienveo_phase:

@@ -135,7 +135,7 @@ export default function ProfilePage() {
                                     <Input
                                         type="number" step="0.1"
                                         value={formData.defaultInterestRate || ''}
-                                        onChange={(e) => handleChange('defaultInterestRate', parseFloat(e.target.value) || 3.8)}
+                                        onChange={(e) => handleChange('defaultInterestRate', parseFloat(e.target.value) || 3.41)}
                                     />
                                 </div>
                             </div>

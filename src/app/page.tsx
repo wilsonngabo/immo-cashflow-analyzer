@@ -42,7 +42,7 @@ const DEFAULT_DATA: InvestmentData = {
   propertyType: 'OLD',
   loanAmount: 150000,
   personalContribution: 0,
-  interestRate: 3.8,
+  interestRate: 3.41,
   loanDuration: 25,
   insuranceRate: 0.34,
   monthlyRent: 800,
@@ -61,7 +61,12 @@ export default function Home() {
   const { profile, isLoaded: profileLoaded } = useProfile();
   const [data, setData] = useState<InvestmentData>(DEFAULT_DATA);
   const [mode, setMode] = useState('LMNP_MICRO');
-  const [rentMarket, setRentMarket] = useState<{ median: number; count: number } | null>(null);
+  const [rentMarket, setRentMarket] = useState<{
+    median: number; count: number;
+    colocPerRoom?: number | null; colocCount?: number; colocSource?: string | null;
+    furnished?: { count: number; median: number } | null;
+    unfurnished?: { count: number; median: number } | null;
+  } | null>(null);
   const [results, setResults] = useState<FinancialResults>(INITIAL_RESULTS);
   const [allResults, setAllResults] = useState<Record<string, FinancialResults>>({});
   const [simulations, setSimulations] = useState<SavedSimulation[]>([]);

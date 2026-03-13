@@ -33,10 +33,13 @@ export function FinancialResultsDisplay({ results, comparativeResults, currentMo
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {/* Cashflow Net Net */}
-                    <div className="text-center p-4 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                        <div className="text-sm text-slate-500 mb-1">Cash-Flow Net (Après Impôts)</div>
+                    <div className="text-center p-4 bg-slate-50 dark:bg-slate-900 rounded-lg space-y-1">
+                        <div className="text-sm text-slate-500">Cash-Flow Net Net (Après Impôts)</div>
                         <div className={`text-3xl font-bold ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
                             {formatCurrency(results.monthlyCashFlowNetNet)}<span className="text-sm text-slate-400">/mois</span>
+                        </div>
+                        <div className="text-xs text-slate-400">
+                            Avant impôt : {formatCurrency(results.monthlyCashFlowNet)}/mois
                         </div>
                     </div>
 

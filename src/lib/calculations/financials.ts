@@ -84,13 +84,68 @@ export function checkEligibility(revenue: number, householdSize: number): boolea
     return getPTZDetails(0, revenue, householdSize).eligible;
 }
 
-// Mock Market Rates (Q1 2025 proj)
-export function getMarketRate(years: number): number {
-    if (years <= 10) return 3.30;
-    if (years <= 15) return 3.55;
-    if (years <= 20) return 3.85;
-    if (years <= 25) return 4.00;
-    return 4.20;
+/**
+ * National average mortgage rates — source: CAFPI baromètre, mars 2026.
+ * Interpolated linearly between reference points for intermediate durations.
+ */
+const RATE_TABLE_NATIONAL: [number, number][] = [
+    [5,  2.85],
+    [7,  2.92],
+    [10, 3.02],
+    [12, 3.07],
+    [15, 3.13],
+    [20, 3.26],
+    [25, 3.41],
+];
+
+/** Regional 25-year rates — source: CAFPI mars 2026. Spread applied to all durations. */
+const REGIONAL_25Y_RATES: Record<string, number> = {
+    'Île-de-France':              3.35,
+    'Bretagne':                   3.52,
+    'Grand Est':                  3.38,
+    "Provence-Alpes-Côte d'Azur": 3.34,
+    'Pays de la Loire':           3.47,
+    'Bourgogne-Franche-Comté':    3.41,
+    'Hauts-de-France':            3.44,
+    'Normandie':                  3.47,
+    'Nouvelle-Aquitaine':         3.44,
+    'Auvergne-Rhône-Alpes':       3.46,
+    'Occitanie':                  3.41,
+    'Corse':                      3.33,
+    'Centre-Val de Loire':        3.33,
+};
+
+function interpolateRate(years: number): number {
+    if (years <= RATE_TABLE_NATIONAL[0][0]) return RATE_TABLE_NATIONAL[0][1];
+    if (years >= RATE_TABLE_NATIONAL[RATE_TABLE_NATIONAL.length - 1][0])
+        return RATE_TABLE_NATIONAL[RATE_TABLE_NATIONAL.length - 1][1];
+    for (let i = 0; i < RATE_TABLE_NATIONAL.length - 1; i++) {
+        const [y1, r1] = RATE_TABLE_NATIONAL[i];
+        const [y2, r2] = RATE_TABLE_NATIONAL[i + 1];
+        if (years >= y1 && years <= y2) {
+            const t = (years - y1) / (y2 - y1);
+            return Math.round((r1 + t * (r2 - r1)) * 100) / 100;
+        }
+    }
+    return 3.26;
+}
+
+/**
+ * Get current market mortgage rate for a given duration (and optional region).
+ * Source: CAFPI baromètre mars 2026.
+ */
+export function getMarketRate(years: number, region?: string): number {
+    const nationalRate = interpolateRate(years);
+    if (!region || !REGIONAL_25Y_RATES[region]) return nationalRate;
+    const national25 = 3.41;
+    const regional25 = REGIONAL_25Y_RATES[region];
+    const spread = regional25 - national25;
+    return Math.round((nationalRate + spread) * 100) / 100;
+}
+
+/** Get all available regional rate names. */
+export function getRegionalRateNames(): string[] {
+    return Object.keys(REGIONAL_25Y_RATES);
 }
 
 export function calculateMonthlyMortgage(amount: number, rate: number, years: number): number {
@@ -153,10 +208,14 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
 
     // 2. Revenues (Annual) — 0 vacance = 12 mois de loyer, 1 mois vacance = 11 mois, etc.
     const vacancyMonths = data.vacancyMonth ?? 1;
-    const effectiveMonthlyRent = data.simulationColoc ? data.monthlyRent * 1.28 : data.monthlyRent;
+    const effectiveMonthlyRent = data.monthlyRent;
     const annualGrossRent = effectiveMonthlyRent * (12 - vacancyMonths);
 
     // 3. Charges (Annual)
+    // In colocation (all-inclusive forfait), the landlord pays energy + internet
+    const colocExtraCharges = data.simulationColoc
+        ? ((data.surface ?? 50) * (data.heatingType === 'COLLECTIVE' ? 1.0 : 2.5) + 30) * 12
+        : 0;
     const annualCondoFees = data.condoFees * 12;
     const annualManagementFees = (annualGrossRent * (data.managementFees || 0)) / 100;
     const annualGLI = (annualGrossRent * (data.gliRate || 0)) / 100;
@@ -167,7 +226,8 @@ export function calculateFinancials(data: InvestmentData, taxationMode: string):
         (data.pnoInsurance || 0) +
         annualManagementFees +
         annualGLI +
-        annualLoanInsurance;
+        annualLoanInsurance +
+        colocExtraCharges;
 
     // 4. Mortgage (Complex with PTZ/Action)
     let mainLoanAmount = data.loanAmount;

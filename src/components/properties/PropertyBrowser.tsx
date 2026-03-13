@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Property, InvestmentData } from '@/lib/types';
 import { getProfileBasedFinancials, buildInvestmentDataFromProperty, getBestTaxRegimeFinancials } from '@/lib/calculations/annonces';
+import { useRates } from '@/hooks/useRates';
 
 interface PropertyBrowserProps {
     onAnalyze: (data: Partial<InvestmentData>, options?: { fiscalMode?: string; rentMarketInfo?: { median: number; count: number } | null }) => void;
@@ -57,6 +58,7 @@ function fallbackYieldCashflow(price: number): { yield: number; cf: number } {
 
 export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserProps) {
     const { profile, isLoaded } = useProfile();
+    const { rates: liveRates } = useRates();
     const [properties, setProperties] = useState<Property[]>([]);
     const [stats, setStats] = useState<DBStats | null>(null);
     const [loading, setLoading] = useState(false);
@@ -152,10 +154,10 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
         if (sortBy === 'estimatedCashflow' && isLoaded && profile) {
             return [...properties].sort((a, b) => {
                 const cfA = (a.listingType === 'buy' && a.price > 0 && (a.surface || a.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(a, profile).bestCaseCashflow
+                    ? getBestTaxRegimeFinancials(a, profile, liveRates).bestCaseCashflow
                     : (a.estimatedCashflow ?? 0);
                 const cfB = (b.listingType === 'buy' && b.price > 0 && (b.surface || b.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(b, profile).bestCaseCashflow
+                    ? getBestTaxRegimeFinancials(b, profile, liveRates).bestCaseCashflow
                     : (b.estimatedCashflow ?? 0);
                 return sortDir === 'desc' ? cfB - cfA : cfA - cfB;
             });
@@ -163,16 +165,16 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
         if (sortBy === 'estimatedYield' && isLoaded && profile) {
             return [...properties].sort((a, b) => {
                 const yA = (a.listingType === 'buy' && a.price > 0 && (a.surface || a.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(a, profile).yieldBrut
+                    ? getBestTaxRegimeFinancials(a, profile, liveRates).yieldBrut
                     : (a.estimatedYield ?? 0);
                 const yB = (b.listingType === 'buy' && b.price > 0 && (b.surface || b.pricePerSqm))
-                    ? getBestTaxRegimeFinancials(b, profile).yieldBrut
+                    ? getBestTaxRegimeFinancials(b, profile, liveRates).yieldBrut
                     : (b.estimatedYield ?? 0);
                 return sortDir === 'desc' ? yB - yA : yA - yB;
             });
         }
         return properties;
-    }, [properties, sortBy, sortDir, isLoaded, profile]);
+    }, [properties, sortBy, sortDir, isLoaded, profile, liveRates]);
 
     // Hydrate filters from URL once on mount (shareable links)
     useEffect(() => {
@@ -301,8 +303,8 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
 
     const handleAnalyze = async (p: Property) => {
         if (isLoaded && profile && p.listingType === 'buy' && p.price > 0) {
-            const data = buildInvestmentDataFromProperty(p, profile);
-            const { bestMode } = getBestTaxRegimeFinancials(p, profile);
+            const data = buildInvestmentDataFromProperty(p, profile, liveRates);
+            const { bestMode } = getBestTaxRegimeFinancials(p, profile, liveRates);
 
             // Fetch market rent from LBC location listings stored in DB
             let marketRent: number | null = null;
@@ -317,7 +319,15 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
                     const json = await res.json();
                     if (json.count >= 3 && json.medianRent) {
                         marketRent = json.medianRent;
-                        rentMarketInfo = { median: json.medianRent, count: json.count };
+                        rentMarketInfo = {
+                            median: json.medianRent,
+                            count: json.count,
+                            colocPerRoom: json.colocPerRoom ?? null,
+                            colocCount: json.colocCount ?? 0,
+                            colocSource: json.colocSource ?? null,
+                            furnished: json.furnished ?? null,
+                            unfurnished: json.unfurnished ?? null,
+                        };
                     }
                 } catch { /* ignore — fall back to yield-based estimate */ }
             }
@@ -649,7 +659,7 @@ export function PropertyBrowser({ onAnalyze, initialFilters }: PropertyBrowserPr
                                         {p.rooms && <span className="bg-slate-100 px-1.5 py-0.5 rounded">{p.rooms} pièces</span>}
                                         {p.pricePerSqm && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{p.pricePerSqm.toLocaleString('fr-FR')} €/m²</span>}
                                         {(p.listingType === 'buy' && p.price > 0 && (p.surface || p.pricePerSqm) && isLoaded && profile) ? (() => {
-                                            const f = getBestTaxRegimeFinancials(p, profile);
+                                            const f = getBestTaxRegimeFinancials(p, profile, liveRates);
                                             return (
                                                 <>
                                                     <span className={`px-1.5 py-0.5 rounded font-semibold ${f.bestCaseCashflow > 0 ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300' : 'bg-red-100 text-red-700 ring-1 ring-red-300'}`} title={`Best case (0 vacance, ${f.bestCaseLabel})`}>

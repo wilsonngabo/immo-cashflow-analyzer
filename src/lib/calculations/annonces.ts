@@ -1,29 +1,40 @@
 import { Property, InvestmentData, PropertyType } from '@/lib/types';
 import type { UserProfile } from '@/hooks/useProfile';
-import { calculateFinancials, calculateNotaryFees, calculateAllFiscalModes } from './financials';
-import { getZoneFromPostalCode } from '@/lib/geography';
+import { calculateFinancials, calculateNotaryFees, calculateAllFiscalModes, getMarketRate } from './financials';
+import { getZoneFromPostalCode, getDepartmentCode, getRegionForDepartment } from '@/lib/geography';
+import type { LiveRates } from '@/hooks/useRates';
+import { getLiveRate } from '@/hooks/useRates';
 
-/**
- * En colocation, le loyer total est souvent 25 à 35 % plus élevé (loyer par chambre).
- * On utilise un coefficient pour estimer le loyer coloc à partir du loyer "classique".
- */
-const COLOC_RENT_FACTOR = 1.28;
+function getMarketRateForProperty(p: Property, loanDuration: number, liveRates?: LiveRates | null): number {
+    const dept = p.postalCode ? getDepartmentCode(p.postalCode) : undefined;
+    const region = dept ? getRegionForDepartment(dept) : undefined;
+    if (liveRates) {
+        return getLiveRate(liveRates, loanDuration, region ?? undefined);
+    }
+    return getMarketRate(loanDuration, region ?? undefined);
+}
 
-/**
- * Indique si le bien peut raisonnablement être considéré comme coloc (2 chambres ou plus).
- */
 function canBeColoc(p: Property): boolean {
     if (p.bedrooms != null && p.bedrooms >= 2) return true;
-    if (p.rooms != null && p.rooms >= 3) return true; // 3 pièces = au moins 2 chambres en général
+    if (p.rooms != null && p.rooms >= 3) return true;
     return false;
 }
 
+function getBedroomCount(p: Property): number {
+    if (p.bedrooms != null && p.bedrooms > 0) return p.bedrooms;
+    if (p.rooms != null && p.rooms > 1) return p.rooms - 1;
+    return 0;
+}
+
 /**
- * Loyer mensuel estimé en colocation (loué par chambre).
+ * Estimated coloc monthly rent: per-room pricing with ~15% premium over splitting base rent.
  */
 export function getColocMonthlyRent(baseMonthlyRent: number, p: Property): number | null {
     if (!canBeColoc(p)) return null;
-    return Math.round(baseMonthlyRent * COLOC_RENT_FACTOR);
+    const bedrooms = getBedroomCount(p);
+    if (bedrooms <= 0) return null;
+    const perRoom = (baseMonthlyRent / bedrooms) * 1.15;
+    return Math.round(perRoom * bedrooms);
 }
 
 const FISCAL_MODE_LABELS: Record<string, string> = {
@@ -50,7 +61,8 @@ function estimateBrutYield(price: number, pricePerSqm?: number): number {
  */
 export function buildInvestmentDataFromProperty(
     p: Property,
-    profile: UserProfile
+    profile: UserProfile,
+    liveRates?: LiveRates | null
 ): InvestmentData {
     const price = p.price ?? 0;
     const surface = p.surface ?? 0;
@@ -79,7 +91,7 @@ export function buildInvestmentDataFromProperty(
         postalCode: p.postalCode,
         loanAmount: loanAmount || price,
         personalContribution: profile.personalContribution ?? 0,
-        interestRate: profile.defaultInterestRate ?? 3.8,
+        interestRate: profile.defaultInterestRate ?? getMarketRateForProperty(p, profile.defaultLoanDuration ?? 25, liveRates),
         loanDuration: profile.defaultLoanDuration ?? 25,
         insuranceRate: 0.34,
         monthlyRent: Math.round(monthlyRent),
@@ -103,9 +115,10 @@ export function buildInvestmentDataFromProperty(
  */
 export function getProfileBasedFinancials(
     p: Property,
-    profile: UserProfile
+    profile: UserProfile,
+    liveRates?: LiveRates | null
 ): { yieldBrut: number; yieldNet: number; monthlyCashFlowNetNet: number } {
-    const data = buildInvestmentDataFromProperty(p, profile);
+    const data = buildInvestmentDataFromProperty(p, profile, liveRates);
     const results = calculateFinancials(data, 'LMNP_MICRO');
     return {
         yieldBrut: results.yieldBrut,
@@ -139,9 +152,10 @@ export interface BestCaseFinancials {
  */
 export function getBestTaxRegimeFinancials(
     p: Property,
-    profile: UserProfile
+    profile: UserProfile,
+    liveRates?: LiveRates | null
 ): BestCaseFinancials {
-    const data = buildInvestmentDataFromProperty(p, profile);
+    const data = buildInvestmentDataFromProperty(p, profile, liveRates);
     const allResults = calculateAllFiscalModes(data);
 
     // Find best tax regime for standard location

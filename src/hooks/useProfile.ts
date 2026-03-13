@@ -16,7 +16,7 @@ const DEFAULT_PROFILE: UserProfile = {
     annualSalary: 0,
     personalContribution: 0,
     defaultLoanDuration: 25,
-    defaultInterestRate: 3.8,
+    defaultInterestRate: 3.41,
     targetYieldMin: 6,
     targetCashflowMin: 0,
     revenueN2: 0,
