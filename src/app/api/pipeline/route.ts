@@ -6,28 +6,58 @@ import path from 'path';
 const execFileAsync = promisify(execFile);
 const SCRIPT_PATH = path.join(process.cwd(), 'scripts', 'pipeline.py');
 
-export async function POST() {
-    try {
-        // Try precise Windows install path first, then fallbacks
-        const winPythonPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe');
-        let python = 'python3';
+function getPythonPath(): string {
+    if (process.platform === 'win32') {
+        const winPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe');
+        return winPath;
+    }
+    return 'python3';
+}
 
+/**
+ * POST /api/pipeline — Trigger pipeline from server (body: { mode?, no_vpn?, region? })
+ */
+export async function POST(request: Request) {
+    try {
+        let mode: string | undefined;
+        let noVpn = false;
+        let region: string | undefined;
         try {
-            await execFileAsync(winPythonPath, ['--version'], { timeout: 3000 });
-            python = winPythonPath;
+            const body = await request.json().catch(() => ({}));
+            mode = body.mode;
+            noVpn = body.no_vpn === true || body.no_vpn === '1';
+            region = body.region;
         } catch {
+            // ignore
+        }
+
+        const args: string[] = [];
+        if (mode === 'bienveo-only') args.push('--bienveo-only');
+        else if (mode === 'lbconly' || mode === 'lbc-only') args.push('--lbc-only');
+        if (noVpn) args.push('--no-vpn');
+
+        const env = { ...process.env };
+        if (region) env.PIPELINE_REGION = region;
+        env.PYTHONUNBUFFERED = '1';
+
+        let python = getPythonPath();
+        if (process.platform === 'win32') {
+            try {
+                await execFileAsync(python, ['--version'], { timeout: 3000 });
+            } catch {
+                python = 'python';
+            }
+        } else {
             try {
                 await execFileAsync('python3', ['--version'], { timeout: 3000 });
-                python = 'python3';
             } catch {
                 python = 'python';
             }
         }
 
-        // We run the pipeline synchronously up to a point, or trigger it asynchronously.
-        // It might take time, we trigger it, wait for 1 sec to catch immediate errors, then let it run
-        const child = execFile(python, [SCRIPT_PATH], {
+        const child = execFile(python, [SCRIPT_PATH, ...args], {
             cwd: process.cwd(),
+            env,
         });
 
         // We could collect stdout/stderr or just let it run.
@@ -58,6 +88,9 @@ export async function POST() {
         return NextResponse.json({
             success: true,
             message: 'Pipeline lancée en arrière-plan',
+            mode: mode || 'full',
+            region: region || null,
+            no_vpn: noVpn,
         });
 
     } catch (error) {

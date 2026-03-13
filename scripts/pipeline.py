@@ -19,6 +19,14 @@ Usage:
 
 import os
 import sys
+
+# Unbuffered output so progress is visible when run from scripts/automation
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(line_buffered=True)
+        sys.stderr.reconfigure(line_buffered=True)
+    except Exception:
+        pass
 import time
 import json
 import random
@@ -59,31 +67,40 @@ BACKOFF_MULTIPLIER = 2
 BACKOFF_MAX = 360
 MAX_BLOCK_ROUNDS = 5
 
-NORDVPN_CLI = r"C:\Program Files\NordVPN\nordvpn.exe"
+# NordVPN CLI: Windows path vs Linux/macOS (nordvpn from PATH)
+import platform
+if platform.system() == "Windows":
+    NORDVPN_CLI = os.environ.get("NORDVPN_CLI", r"C:\Program Files\NordVPN\nordvpn.exe")
+else:
+    NORDVPN_CLI = os.environ.get("NORDVPN_CLI", "nordvpn")
 
 ESTIMATED_TOTAL_LISTINGS = 1_000_000
 
-# Windows SetThreadExecutionState flags
-ES_CONTINUOUS = 0x80000000
-ES_SYSTEM_REQUIRED = 0x00000001
-
 
 def prevent_sleep():
-    """Tell Windows to stay awake (no standby/hibernate) while scraping."""
-    try:
-        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-        print("[POWER] Sleep mode disabled — PC will stay awake")
-    except Exception as e:
-        print(f"[POWER] Could not disable sleep: {e}")
+    """Tell OS to stay awake while scraping. Windows: SetThreadExecutionState. Linux: systemd-inhibit (if available)."""
+    if platform.system() == "Windows":
+        try:
+            ES_CONTINUOUS = 0x80000000
+            ES_SYSTEM_REQUIRED = 0x00000001
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+            print("[POWER] Sleep mode disabled — PC will stay awake")
+        except Exception as e:
+            print(f"[POWER] Could not disable sleep: {e}")
+    else:
+        # Linux/macOS: no-op (desktop sleep prevention not commonly needed for scraping)
+        pass
 
 
 def allow_sleep():
-    """Re-enable normal Windows sleep behavior."""
-    try:
-        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
-        print("[POWER] Sleep mode re-enabled")
-    except Exception as e:
-        print(f"[POWER] Could not re-enable sleep: {e}")
+    """Re-enable normal OS sleep behavior."""
+    if platform.system() == "Windows":
+        try:
+            ES_CONTINUOUS = 0x80000000
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            print("[POWER] Sleep mode re-enabled")
+        except Exception as e:
+            print(f"[POWER] Could not re-enable sleep: {e}")
 
 
 def get_price_ranges(listing_type: str) -> list[tuple[int, int]]:
@@ -279,12 +296,14 @@ def run_bienveo(conn: sqlite3.Connection, listing_types: list[str]) -> int:
         print("[bienveo] bienveo_scrape.py not found, skipping.")
         return 0
 
-    print("\n" + "=" * 60)
-    print(f"[{datetime.now().isoformat()}] Phase 1 — Bienveo (HLM)")
-    print("=" * 60)
+    print("\n" + "=" * 60, flush=True)
+    print(f"[{datetime.now().isoformat()}] Phase 1 — Bienveo (HLM)", flush=True)
+    print("=" * 60, flush=True)
 
     total_inserted = 0
+    print("[Bienveo] Creating session...", flush=True)
     session = bienveo_scrape.make_session()
+    print("[Bienveo] Fetching pages...", flush=True)
 
     for listing_type in listing_types:
         transaction = "vente" if listing_type == "buy" else "location"
@@ -323,9 +342,9 @@ def run_bienveo(conn: sqlite3.Connection, listing_types: list[str]) -> int:
                 page += 1
                 time.sleep(random.uniform(1.0, 2.5))
 
-            print(f"  [bienveo] {slug}: {slug_count} ads")
+            print(f"  [bienveo] {slug}: {slug_count} ads", flush=True)
 
-    print(f"  [bienveo] Total inserted: {total_inserted}")
+    print(f"  [bienveo] Total inserted: {total_inserted}", flush=True)
     return total_inserted
 
 
@@ -429,8 +448,18 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
     if not resume:
         save_lbc_progress({})
 
+    # Filter by region if PIPELINE_REGION is set (e.g. PIPELINE_REGION=Normandie)
+    region_filter = (os.environ.get("PIPELINE_REGION") or "").strip()
+    regions_to_use = REGIONS.items()
+    if region_filter:
+        if region_filter not in REGIONS:
+            print(f"[ERROR] Unknown region '{region_filter}'. Valid: {list(REGIONS.keys())}")
+            sys.exit(1)
+        regions_to_use = [(region_filter, REGIONS[region_filter])]
+        print(f"  Region filter: {region_filter} only")
+
     all_dept_codes = []
-    for _, codes in REGIONS.items():
+    for _, codes in regions_to_use:
         for c in codes:
             if c not in all_dept_codes:
                 all_dept_codes.append(c)
@@ -543,6 +572,10 @@ def run_lbc(conn: sqlite3.Connection, listing_types: list[str],
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
+    print("[Pipeline] Starting...", flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
+
     parser = argparse.ArgumentParser(description="Pipeline: Bienveo + LBC scraper")
     parser.add_argument("--bienveo-only", action="store_true", help="Run Bienveo only")
     parser.add_argument("--lbc-only", action="store_true", help="Run LBC only")
@@ -562,10 +595,11 @@ def main() -> None:
     run_lbc_phase = not args.bienveo_only
 
     # VPN is mandatory by default — protects personal IP
+    print(f"[Pipeline] Mode: bienveo={run_bienveo_phase}, lbc={run_lbc_phase}, vpn={use_vpn}", flush=True)
     if use_vpn:
         ensure_vpn_connected()
     else:
-        print("[!] WARNING: Running WITHOUT VPN — your personal IP is exposed!")
+        print("[!] WARNING: Running WITHOUT VPN — your personal IP is exposed!", flush=True)
 
     prevent_sleep()
 
@@ -573,8 +607,8 @@ def main() -> None:
     started_at = time.time()
 
     # ─── Phase 0: Mortgage rates ─────────────────────────────────────────
-    print("\n" + "=" * 60)
-    print(f"[{datetime.now().isoformat()}] Phase 0 — Mortgage Rates (CAFPI)")
+    print("\n" + "=" * 60, flush=True)
+    print(f"[{datetime.now().isoformat()}] Phase 0 — Mortgage Rates (CAFPI)", flush=True)
     print("=" * 60)
     try:
         rate_data = rates_scrape.run(DB_FILE)
@@ -637,7 +671,10 @@ def main() -> None:
     # ─── Auto-shutdown ───────────────────────────────────────────────────
     if args.shutdown:
         print("\n>>> Computer will shut down in 60 seconds. Close this window to cancel.")
-        subprocess.run(["shutdown", "/s", "/t", "60"])
+        if platform.system() == "Windows":
+            subprocess.run(["shutdown", "/s", "/t", "60"])
+        else:
+            subprocess.run(["shutdown", "-h", "+1"], capture_output=True)
 
 
 if __name__ == "__main__":

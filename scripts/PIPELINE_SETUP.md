@@ -2,6 +2,8 @@
 
 La **pipeline ne se lance plus à la main** depuis l’interface. Elle est gérée automatiquement.
 
+> **Lancer depuis le serveur** : voir [scripts/SERVER_SETUP.md](SERVER_SETUP.md) pour démarrer l'app et la pipeline sur un serveur Linux (sans SSH depuis votre PC).
+
 ## Lancement automatique
 
 - **Au démarrage du site** : 30 secondes après le démarrage du serveur Next.js (`next start` ou `next dev`), la pipeline est lancée une fois en arrière-plan.
@@ -59,6 +61,8 @@ Pipeline **optimisée pour ~1 h max** :
 
 Avec **18 régions**, ~**96 départements**, **10 tranches**, **1 type** : ~960 recherches × 2 appels × 2,25 s ≈ **~1 h**.
 
-Pour tester plus vite : `PIPELINE_LIMIT_REGIONS=1 python scripts/pipeline.py` (une seule région).
+Pour tester plus vite :
+- `PIPELINE_REGION=Normandie python3 scripts/pipeline.py` (une seule région)
+- `PIPELINE_REGION=Île-de-France python3 scripts/pipeline.py` (exemple)
 
 *(Si Python n’est pas dans le PATH, utilisez le chemin complet vers l’exécutable Python 3.12.)*

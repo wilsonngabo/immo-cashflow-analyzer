@@ -13,11 +13,12 @@ function getPythonPath(): string {
 }
 
 /**
- * GET /api/cron/pipeline?secret=xxx
- * Runs the data pipeline. Used by:
- * - Vercel Cron (add in vercel.json: "crons": [{ "path": "/api/cron/pipeline", "schedule": "0 2 * * *" }])
- * - External cron (e.g. curl "https://your-app.vercel.app/api/cron/pipeline?secret=YOUR_CRON_SECRET")
- * Set CRON_SECRET in env and pass it as query param or Authorization header.
+ * GET /api/cron/pipeline?secret=xxx&mode=bienveo-only&no_vpn=1&region=Normandie
+ * Runs the data pipeline on the server. Used by:
+ * - Cron on server: curl "http://localhost:3000/api/cron/pipeline?secret=XXX"
+ * - Browser/remote: https://your-server.com/api/cron/pipeline?secret=XXX
+ * - Optional params: mode=bienveo-only|lbconly, no_vpn=1, region=Normandie
+ * Set CRON_SECRET in env. If unset, accepts any request (use only on trusted networks).
  */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -28,6 +29,19 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const mode = searchParams.get('mode'); // bienveo-only | lbconly
+    const noVpn = searchParams.get('no_vpn') === '1' || searchParams.get('no_vpn') === 'true';
+    const region = searchParams.get('region') || undefined;
+
+    const args: string[] = [];
+    if (mode === 'bienveo-only') args.push('--bienveo-only');
+    else if (mode === 'lbconly') args.push('--lbc-only');
+    if (noVpn) args.push('--no-vpn');
+
+    const env = { ...process.env };
+    if (region) env.PIPELINE_REGION = region;
+    env.PYTHONUNBUFFERED = '1';
+
     try {
         let python = getPythonPath();
         try {
@@ -36,13 +50,19 @@ export async function GET(request: Request) {
             python = process.platform === 'win32' ? 'python' : 'python3';
         }
 
-        const child = execFile(python, [SCRIPT_PATH], { cwd: process.cwd() });
+        const child = execFile(python, [SCRIPT_PATH, ...args], { cwd: process.cwd(), env });
         child.on('error', (err) => console.error('[cron/pipeline]', err));
         child.stderr?.on('data', (d) => console.log('[cron/pipeline stderr]', d.toString().slice(-200)));
         child.stdout?.on('data', (d) => console.log('[cron/pipeline stdout]', d.toString().slice(-200)));
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        return NextResponse.json({ ok: true, message: 'Pipeline lancée en arrière-plan' });
+        return NextResponse.json({
+            ok: true,
+            message: 'Pipeline lancée en arrière-plan',
+            mode: mode || 'full',
+            region: region || null,
+            no_vpn: noVpn,
+        });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[cron/pipeline]', msg);
