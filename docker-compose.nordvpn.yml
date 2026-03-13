@@ -1,0 +1,46 @@
+# Alternative to Gluetun: tmknight/docker-nordvpn (official NordVPN client)
+# Uses ACCESS TOKEN (not service credentials) — generate at:
+#   https://my.nordaccount.com/dashboard/nordvpn/ → NordVPN → Generate new token
+#
+# Plex unaffected — this container only routes its own + scraper traffic
+#
+# Run pipeline: docker compose -f docker-compose.nordvpn.yml run --rm scraper
+
+services:
+  nordvpn:
+    image: tmknight88/nordvpn:latest
+    container_name: nordvpn-scraper
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    env_file:
+      - .env
+    environment:
+      - TOKEN=${NORDVPN_WIREGUARD_TOKEN}
+      - CONNECT=France
+      - TECHNOLOGY=NordLynx
+    restart: unless-stopped
+
+  scraper:
+    image: python:3.12-slim
+    container_name: immo-scraper
+    network_mode: "service:nordvpn"
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      - PIPELINE_REGION=Normandie
+      - PIPELINE_MODE=buy
+      - PYTHONUNBUFFERED=1
+      - SCRAPER_VPN_DOCKER_NORDVPN=1
+    command: >
+      sh -c "echo 'Waiting for VPN...' && sleep 45 &&
+             pip install -q curl_cffi pyarrow beautifulsoup4 docker &&
+             python -u scripts/pipeline.py --lbc-only"
+    depends_on:
+      - nordvpn

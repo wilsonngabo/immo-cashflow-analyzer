@@ -1,0 +1,37 @@
+# Gluetun VPN for LeBonCoin scraping — separate from Plex's Gluetun
+# Ref: https://www.reddit.com/r/homelab/comments/1iu47aq/gluetun_with_nordvpn_via_wireguard_in/
+#
+# Usage:
+#   docker compose -f docker-compose.scraper-vpn.yml up -d
+#   SCRAPER_VPN_PROXY_MODE=1 python scripts/pipeline.py --lbc-only
+#
+# Rotate IP: docker restart gluetun-scraper
+#
+# Auth: .env with Manual setup credentials — NORDVPN_USER + NORDVPN_PASSWORD
+# WireGuard key: https://my.nordaccount.com/dashboard/nordvpn/manual-configuration/
+# WIREGUARD_MTU=1300 helps if behind another VPN or NAT (homelab tip)
+
+services:
+  gluetun-scraper:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun-scraper
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    env_file:
+      - .env
+    environment:
+      - VPN_SERVICE_PROVIDER=nordvpn
+      - VPN_TYPE=${VPN_TYPE:-openvpn}
+      - OPENVPN_USER=${NORDVPN_USER}
+      - OPENVPN_PASSWORD=${NORDVPN_PASSWORD}
+      - OPENVPN_PROTOCOL=tcp
+      - WIREGUARD_PRIVATE_KEY=${NORDVPN_WIREGUARD_PRIVATE_KEY:-}
+      - WIREGUARD_MTU=1300
+      - SERVER_COUNTRIES=France
+      - HTTPPROXY=on
+      - HTTPPROXY_PORT=8888
+    ports:
+      - "127.0.0.1:8888:8888/tcp"
+    restart: unless-stopped

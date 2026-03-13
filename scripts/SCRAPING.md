@@ -28,23 +28,29 @@ Références utilisées pour garder le scraping **efficace en coût** et fiable 
 - **Délais** 1,5–3 s entre requêtes pour limiter les 403.
 - **Tranches larges** (200k€) et **une recherche** appart+maison pour rester sous ~1 h de run.
 
-## NordVPN + Plex (Linux)
+## NordVPN + Plex / Gluetun (recommandé)
 
-La pipeline utilise NordVPN pour protéger votre IP lors du scraping. Si vous avez **Plex** sur la même machine, le trafic Plex peut être affecté car tout passe par le VPN.
+Si vous avez **Plex** avec **Gluetun** sur la même machine, utilisez un **Gluetun dédié** pour le scraping. Plex et scraping ont chacun leur propre tunnel VPN — aucun impact mutuel.
 
-**Solution : Allowlist NordVPN** — exclure le port Plex (32400) du tunnel VPN :
+### Gluetun dédié pour LBC (docker-compose.scraper-vpn.yml)
 
 ```bash
-# Une fois configuré, Plex continue de fonctionner normalement pendant que la pipeline scrap via VPN
-nordvpn allowlist add port 32400
+# 1. Créer .env avec identifiants NordVPN
+cp .env.example .env
+# Éditer .env : NORDVPN_USER, NORDVPN_PASSWORD
+
+# 2. Démarrer le Gluetun scraper (séparé du Gluetun Plex)
+docker compose -f docker-compose.scraper-vpn.yml up -d
+
+# 3. Lancer la pipeline avec proxy (Plex inchangé)
+SCRAPER_VPN_PROXY_MODE=1 python scripts/pipeline.py --lbc-only
 ```
 
-- **Scraping** : trafic vers LBC/Bienveo → via VPN ✓  
-- **Plex** : port 32400 → hors VPN, accès direct ✓  
+Rotation IP sur bloc : `docker restart gluetun-scraper` (automatique dans la pipeline)
 
-Pour retirer la règle plus tard : `nordvpn allowlist remove port 32400`
+### Alternative : NordVPN sur l'hôte + Plex dans Gluetun
 
-Voir : [NordVPN Allowlist (Linux)](https://support.nordvpn.com/hc/en-us/articles/19618692366865)
+Si Plex est dans Gluetun et NordVPN sur l'hôte : le trafic Plex ne passe pas par l'hôte. Allowlist possible : `nordvpn allowlist add port 32400`
 
 ## En cas de blocages persistants
 

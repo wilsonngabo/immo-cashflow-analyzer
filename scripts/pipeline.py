@@ -107,11 +107,106 @@ def get_price_ranges(listing_type: str) -> list[tuple[int, int]]:
     return PRICE_RANGES_RENT if listing_type == "rent" else PRICE_RANGES_BUY
 
 
-# ─── NordVPN rotation ───────────────────────────────────────────────────────
+# ─── VPN: Proxy (Gluetun) vs Host NordVPN vs Docker NordVPN (tmknight) ───────────
+# Proxy mode: SCRAPER_VPN_PROXY_MODE=1 — uses Gluetun (separate from Plex), LBC traffic via proxy
+# Docker NordVPN: SCRAPER_VPN_DOCKER_NORDVPN=1 — scraper inside tmknight container, rotate via docker exec
+
+SCRAPER_VPN_PROXY = os.environ.get("SCRAPER_VPN_PROXY", "http://localhost:8888").strip()
+SCRAPER_VPN_CONTAINER = os.environ.get("SCRAPER_VPN_CONTAINER", "gluetun-scraper").strip()
+SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER = os.environ.get(
+    "SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER", "nordvpn-scraper"
+).strip()
+
+
+def use_proxy_vpn() -> bool:
+    """Use Gluetun proxy (does not affect Plex) instead of host NordVPN."""
+    return os.environ.get("SCRAPER_VPN_PROXY_MODE", "0") in ("1", "true", "yes")
+
+
+def use_docker_nordvpn() -> bool:
+    """Scraper runs inside tmknight NordVPN container; rotate via docker exec."""
+    return os.environ.get("SCRAPER_VPN_DOCKER_NORDVPN", "0") in ("1", "true", "yes")
+
+
+def _docker_cmd():
+    """Return docker compose command (docker-compose or docker compose)."""
+    for cmd in ["docker-compose", "docker compose"]:
+        try:
+            subprocess.run(cmd.split() + ["version"], capture_output=True, timeout=5)
+            return cmd.split()
+        except Exception:
+            pass
+    return ["docker-compose"]
+
+
+def ensure_proxy_vpn_ready() -> bool:
+    """Ensure Gluetun scraper container is running; set LBC_PROXY."""
+    if not use_proxy_vpn():
+        return False
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", SCRAPER_VPN_CONTAINER],
+            capture_output=True, timeout=5, text=True
+        )
+        if result.returncode != 0 or "true" not in (result.stdout or "").lower():
+            print(f"[VPN] Starting {SCRAPER_VPN_CONTAINER}...")
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            compose_file = os.path.join(project_dir, "docker-compose.scraper-vpn.yml")
+            subprocess.run(
+                _docker_cmd() + ["-f", compose_file, "up", "-d"],
+                cwd=project_dir, capture_output=True, timeout=60
+            )
+            time.sleep(10)
+    except Exception as e:
+        print(f"[VPN] Docker check failed: {e}")
+        return False
+
+    os.environ["LBC_PROXY"] = SCRAPER_VPN_PROXY
+    print(f"[VPN] Proxy mode: {SCRAPER_VPN_PROXY} (Plex unaffected)")
+    return True
+
+
+def rotate_proxy_vpn() -> bool:
+    """Rotate IP by restarting Gluetun scraper container."""
+    if not SCRAPER_VPN_CONTAINER:
+        return False
+    print(f"    [VPN] Rotating: docker restart {SCRAPER_VPN_CONTAINER}")
+    try:
+        subprocess.run(["docker", "restart", SCRAPER_VPN_CONTAINER], capture_output=True, timeout=30)
+        time.sleep(15)
+        return True
+    except Exception as e:
+        print(f"    [VPN] Rotation failed: {e}")
+        return False
+
+
+def _rotate_docker_nordvpn() -> bool:
+    """Rotate IP by disconnect/connect inside tmknight NordVPN container (requires docker socket)."""
+    container = SCRAPER_VPN_DOCKER_NORDVPN_CONTAINER
+    print(f"    [VPN] Rotating: docker exec {container} nordvpn disconnect + connect France")
+    try:
+        import docker as docker_module
+        client = docker_module.from_env()
+        nordvpn = client.containers.get(container)
+        nordvpn.exec_run("nordvpn disconnect", detach=False)
+        time.sleep(5)
+        nordvpn.exec_run("nordvpn connect France", detach=False)
+        time.sleep(5)
+        return True
+    except ImportError:
+        print("    [VPN] pip install docker required for tmknight rotation")
+        return False
+    except Exception as e:
+        print(f"    [VPN] Docker NordVPN rotation failed: {e}")
+        return False
+
 
 def rotate_vpn() -> bool:
-    """Disconnect and reconnect NordVPN to a French server for a fresh IP.
-    Returns True if reconnection succeeded. Retries up to 3 times."""
+    """Disconnect and reconnect VPN for fresh IP. Proxy: restart Gluetun. Docker NordVPN: exec disconnect/connect. Host: NordVPN CLI."""
+    if use_proxy_vpn():
+        return rotate_proxy_vpn()
+    if use_docker_nordvpn():
+        return _rotate_docker_nordvpn()
     print("    [VPN] Rotating to new French server...")
     try:
         subprocess.run([NORDVPN_CLI, "-d"], capture_output=True, timeout=10)
@@ -137,7 +232,18 @@ def rotate_vpn() -> bool:
 
 
 def is_vpn_connected() -> bool:
-    """Check if NordVPN is currently connected."""
+    """Check if VPN is ready. Proxy: container running. Docker NordVPN: assume true. Host: NordVPN connected."""
+    if use_docker_nordvpn():
+        return True  # Already in VPN container
+    if use_proxy_vpn():
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Running}}", SCRAPER_VPN_CONTAINER],
+                capture_output=True, timeout=5, text=True
+            )
+            return result.returncode == 0 and "true" in (result.stdout or "").lower()
+        except Exception:
+            return False
     try:
         result = subprocess.run([NORDVPN_CLI, "status"],
                                 capture_output=True, timeout=10, text=True)
@@ -148,8 +254,14 @@ def is_vpn_connected() -> bool:
 
 
 def ensure_vpn_connected():
-    """Make sure NordVPN is connected to France before starting.
-    Raises SystemExit if unable to connect — never scrape on personal IP."""
+    """Make sure VPN is ready. Proxy: start Gluetun. Docker NordVPN: no-op. Host: connect NordVPN to France."""
+    if use_docker_nordvpn():
+        return  # Already in VPN container
+    if use_proxy_vpn():
+        if ensure_proxy_vpn_ready():
+            return
+        print("[VPN] FATAL: Could not start Gluetun scraper. Run: docker compose -f docker-compose.scraper-vpn.yml up -d")
+        sys.exit(1)
     if is_vpn_connected():
         print("[VPN] Already connected")
         return
