@@ -171,7 +171,7 @@ async function scrapeBienveo(params: ScrapeRequest): Promise<ScrapeResult> {
 export async function POST(request: Request) {
     try {
         const params: ScrapeRequest = await request.json().catch(() => ({}));
-        const sources = params.sources?.length ? params.sources : ['leboncoin'];
+        const sources = params.sources?.length ? params.sources : ['leboncoin', 'bienveo'];
         const results: ScrapeResult[] = [];
         let totalNew = 0;
 

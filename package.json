@@ -7,7 +7,10 @@
     "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "pipeline": "python scripts/pipeline.py",
+    "pipeline:bienveo": "python scripts/pipeline.py --bienveo-only",
+    "pipeline:lbc": "python scripts/pipeline.py --lbc-only"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

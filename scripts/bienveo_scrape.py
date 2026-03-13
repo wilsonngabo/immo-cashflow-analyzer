@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 try:
     from curl_cffi import requests as cf_requests
 except ImportError:
-    print(json.dumps({"error": "curl_cffi not installed. Run: pip install curl_cffi"}), file=sys.stderr)
+    print(json.dumps({"error": "curl_cffi not installed. Run: pip install curl_cffi"}))
     sys.exit(1)
 
 BIENVEO_BASE = "https://www.bienveo.fr"
@@ -169,10 +169,10 @@ def fetch_search_page(session, slug: str, page: int, retries: int = 3) -> list[d
                 if attempt < retries - 1:
                     time.sleep(3 + attempt * 3)
                     continue
-                print(f"[bienveo] Blocked (403) on page {page}", file=sys.stderr)
+                print(f"[bienveo] Blocked (403) on page {page}")
                 return None
             if resp.status_code != 200:
-                print(f"[bienveo] HTTP {resp.status_code} on page {page}", file=sys.stderr)
+                print(f"[bienveo] HTTP {resp.status_code} on page {page}")
                 return None
 
             html = resp.text
@@ -181,7 +181,7 @@ def fetch_search_page(session, slug: str, page: int, retries: int = 3) -> list[d
                 html
             )
             if not m:
-                print(f"[bienveo] No __NEXT_DATA__ on page {page}", file=sys.stderr)
+                print(f"[bienveo] No __NEXT_DATA__ on page {page}")
                 return None
 
             data = json.loads(m.group(1))
@@ -197,7 +197,7 @@ def fetch_search_page(session, slug: str, page: int, retries: int = 3) -> list[d
             if attempt < retries - 1:
                 time.sleep(1.5)
                 continue
-            print(f"[bienveo] Exception on page {page}: {e}", file=sys.stderr)
+            print(f"[bienveo] Exception on page {page}: {e}")
             return None
     return None
 
@@ -661,7 +661,7 @@ def main():
             f"{transaction_slug}-maison{suffix}",
         ]
 
-    print(f"Scraping Bienveo: slugs={slugs}, limit={args.limit}, type={args.type}", file=sys.stderr)
+    print(f"Scraping Bienveo: slugs={slugs}, limit={args.limit}, type={args.type}")
 
     conn = init_db(args.db)
     session = make_session()
@@ -679,7 +679,7 @@ def main():
             if hits is None:
                 consecutive_errors += 1
                 if consecutive_errors >= 3:
-                    print(f"[bienveo] 3 consecutive errors on {slug}, stopping.", file=sys.stderr)
+                    print(f"[bienveo] 3 consecutive errors on {slug}, stopping.")
                     break
                 time.sleep(5)
                 continue
@@ -687,7 +687,7 @@ def main():
             consecutive_errors = 0
 
             if not hits:
-                print(f"[bienveo] No more results at page {page} for {slug}", file=sys.stderr)
+                print(f"[bienveo] No more results at page {page} for {slug}")
                 break
 
             batch = []
@@ -699,7 +699,7 @@ def main():
             added, _ = save_to_db(conn, batch)
             properties.extend(batch)
             slug_count += len(batch)
-            print(f"  [{slug}] Page {page}: {len(hits)} hits, {len(batch)} valid, {added} new → DB (total: {len(properties)})", file=sys.stderr)
+            print(f"  [{slug}] Page {page}: {len(hits)} hits, {len(batch)} valid, {added} new → DB (total: {len(properties)})")
 
             if len(hits) < 15:
                 break

@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 try:
     from curl_cffi import requests as cf_requests
 except ImportError:
-    print(json.dumps({"error": "curl_cffi not installed. Run: pip install curl_cffi"}), file=sys.stderr)
+    print(json.dumps({"error": "curl_cffi not installed. Run: pip install curl_cffi"}))
     sys.exit(1)
 
 # ─── City coordinates (for radius-based search) ──────────────────────────────
@@ -489,11 +489,11 @@ def main():
                 pass
         ad = fetch_ad_by_id(session, args.ad_id)
         if not ad:
-            print(json.dumps({"error": "Annonce introuvable ou API indisponible"}), file=sys.stderr)
+            print(json.dumps({"error": "Annonce introuvable ou API indisponible"}))
             sys.exit(1)
         normalized = normalize_ad(ad, "buy", None)
         if not normalized:
-            print(json.dumps({"error": "Données d'annonce invalides"}), file=sys.stderr)
+            print(json.dumps({"error": "Données d'annonce invalides"}))
             sys.exit(1)
         # Output for parse-url API: flat dict with keys expected by frontend
         out = {
@@ -526,7 +526,7 @@ def main():
     page_size: int = 100
     total_to_fetch: int = args.limit
 
-    print(f"Scraping LeBonCoin: city={args.city}, type={args.type}, kind={args.kind}, limit={total_to_fetch}", file=sys.stderr)
+    print(f"Scraping LeBonCoin: city={args.city}, type={args.type}, kind={args.kind}, limit={total_to_fetch}")
 
     # Reuse 1 session
     session = make_session()
@@ -565,7 +565,7 @@ def main():
         properties.extend(batch_properties)
         save_to_db(conn, batch_properties)
 
-        print(f"  Fetched {len(ads)} ads (offset={offset}), total so far: {len(properties)}", file=sys.stderr)
+        print(f"  Fetched {len(ads)} ads (offset={offset}), total so far: {len(properties)}")
 
         if len(ads) < batch_size:
             break
